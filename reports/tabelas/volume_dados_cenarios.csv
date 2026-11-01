@@ -1,0 +1,4 @@
+cenario,vdm_local,veic_hora_pico,veic_min_pico,veic_seg_pico,veic_min_medio,C_evidencia_MB_min_pico,D_transacao_KB_min_pico,C_evidencia_GB_dia_local,B_video_GB_dia_local,A_bruto_GB_min_local,C_evidencia_TB_ano_rede_EPR_Lote4
+baixo,8000,593,9.9,0.16,5.6,9.514074074074072,19.753086419753085,7.7063999999999995,432.0,109.35,11.251343999999998
+médio,20000,1481,24.7,0.41,13.9,23.78518518518518,49.38271604938271,19.266,432.0,109.35,28.12836
+alto,40000,2963,49.4,0.82,27.8,47.57037037037036,98.76543209876542,38.532,432.0,109.35,56.25672
