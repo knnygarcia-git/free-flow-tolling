@@ -4,3 +4,4 @@ __pycache__/
 data/raw/antt/*.csv
 .ipynb_checkpoints/
 data/synthetic/
+exports/*.zip
