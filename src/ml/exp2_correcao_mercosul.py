@@ -26,6 +26,7 @@ import pandas as pd
 
 from comum import (AZUL, CINZA, DIA_TESTE, DIAS_TREINO, FIG, LARANJA, TAB, VERDE, carregar,
                    parse)
+from comum import ALERTA, AMBAR, CINZA_CLARO, TINTA_2, TINTA_3, br, grade_x, salvar, titulo
 
 LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 DIGITOS = "0123456789"
@@ -134,37 +135,52 @@ def main():
     print(f"\nErros que sobram em '{melhor}', por estado da placa (%):\n" + restantes.to_string())
 
     # ---------------------------------------------------------------- figuras
-    fig, ax = plt.subplots(figsize=(8, 3.8))
-    cores = [CINZA, LARANJA, AZUL, VERDE]
-    ax.barh(tab["metodo"], tab["erros_por_10k"], color=cores)
+    nomes = {"A. melhor quadro": "Só a melhor foto",
+             "B. + regra Mercosul": "Melhor foto + regra do formato",
+             "C. votação + regra": "Votação entre as fotos + regra",
+             "D. modelo de confusão": "Modelo das letras confundidas"}
+    fig, ax = plt.subplots(figsize=(8.5, 3.4))
+    pos = np.arange(len(tab))
+    vencedor = int(tab["erros_por_10k"].idxmin())
+    cores = [VERDE if i == vencedor else CINZA_CLARO for i in range(len(tab))]
+    ax.barh(pos, tab["erros_por_10k"], color=cores, height=0.55)
+    ax.set_yticks(pos, [nomes[m] for m in tab["metodo"]])
     for i, (e, r) in enumerate(zip(tab["erros_por_10k"], tab["reducao_erros_pct"])):
-        txt = f"{e:,.0f}" + ("" if i == 0 else f"  (−{r:.0f}%)")
-        ax.text(e + base_err * 0.01, i, txt, va="center")
+        txt = br(e) + ("" if i == 0 else f"   −{br(r)}%")
+        ax.text(e + base_err * 0.015, i, txt, va="center", fontsize=9.5, color=TINTA_2,
+                fontweight="medium" if i == vencedor else "regular")
     ax.invert_yaxis()
-    ax.set_xlim(0, base_err * 1.25)
+    grade_x(ax)
+    ax.set_xlim(0, base_err * 1.3)
+    ax.tick_params(axis="y", labelsize=9.5, labelcolor=TINTA_2)
     ax.set_xlabel("placas lidas erradas a cada 10 mil passagens sem tag")
-    ax.set_title("Corrigindo a leitura com o formato Mercosul e todos os quadros")
     fig.tight_layout()
-    fig.savefig(FIG / "09_correcao_mercosul.png")
-    plt.close(fig)
+    titulo(fig, "Votar entre as fotos corrige 30% dos erros",
+           "Passagens sem tag no dia de teste (dados simulados). O que sobra é placa suja ou amassada.")
+    salvar(fig, FIG / "09_correcao_mercosul.png")
 
-    # confusões mais frequentes aprendidas (fora da diagonal)
-    P = np.exp(logP)
-    np.fill_diagonal(P, 0)
+    # trocas mais frequentes no treino
     cont = []
     for row in tr.itertuples():
         for p, _ in quadros(row):
             for a, b in zip(row.placa_real, p):
                 if a != b:
-                    cont.append(f"{a}→{b}")
-    top = pd.Series(cont).value_counts().head(12)[::-1]
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.barh(top.index, top.values, color=AZUL)
-    ax.set_xlabel("ocorrências no treino (por quadro)")
-    ax.set_title("Trocas de caractere mais comuns (real → lido)")
+                    cont.append(f"{a} lido como {b}")
+    top = pd.Series(cont).value_counts().head(10)[::-1]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    pos = np.arange(len(top))
+    ax.barh(pos, top.values, color=AZUL, height=0.6)
+    ax.set_yticks(pos, top.index)
+    for i, v in enumerate(top.values):
+        ax.text(v + top.max() * 0.015, i, br(v), va="center", fontsize=9, color=TINTA_3)
+    grade_x(ax)
+    ax.set_xticks([])
+    ax.set_xlim(0, top.max() * 1.15)
+    ax.tick_params(axis="y", labelsize=9.5, labelcolor=TINTA_2)
     fig.tight_layout()
-    fig.savefig(FIG / "10_confusoes_ocr.png")
-    plt.close(fig)
+    titulo(fig, "As letras que a câmera mais confunde",
+           "Vezes em que cada troca apareceu nas fotos de treino (dados simulados).")
+    salvar(fig, FIG / "10_confusoes_ocr.png")
 
     (TAB / "exp2_resultados.json").write_text(json.dumps(
         {"passagens_teste": int(len(te)), "metodos": tab.round(3).to_dict(orient="records"),

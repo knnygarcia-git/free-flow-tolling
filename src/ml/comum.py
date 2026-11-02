@@ -20,11 +20,12 @@ MERCOSUL = re.compile(r"^[A-Z]{3}[0-9][A-Z][0-9]{2}$")
 DIAS_TREINO = [0, 1]          # validação temporal: treina nos dias 1-2, testa no dia 3
 DIA_TESTE = 2
 
-AZUL, CINZA, LARANJA, VERDE, VERMELHO = "#2a6fdb", "#9aa3ad", "#e8833a", "#2f9e4f", "#d0453f"
-plt.rcParams.update({
-    "figure.dpi": 130, "axes.spines.top": False, "axes.spines.right": False,
-    "axes.titleweight": "bold", "axes.titlesize": 12, "font.size": 10,
-})
+import sys
+sys.path.insert(0, str(ROOT / "src"))
+from estilo import (ALERTA, AMBAR, AZUL, CINZA, CINZA_CLARO, TINTA, TINTA_2, TINTA_3,  # noqa: E402
+                    VERDE, br, grade_x, salvar, titulo)
+
+LARANJA, VERMELHO = AMBAR, ALERTA
 
 
 def carregar() -> pd.DataFrame:

@@ -39,18 +39,16 @@
     }
   ],
   "top_confusoes": {
-    "5→S": 2278,
-    "7→9": 2235,
-    "9→7": 2207,
-    "4→A": 2200,
-    "2→Z": 2158,
-    "F→E": 1282,
-    "R→P": 1215,
-    "Z→2": 1213,
-    "E→F": 1194,
-    "P→R": 1183,
-    "X→K": 1178,
-    "V→U": 1177
+    "5 lido como S": 2278,
+    "7 lido como 9": 2235,
+    "9 lido como 7": 2207,
+    "4 lido como A": 2200,
+    "2 lido como Z": 2158,
+    "F lido como E": 1282,
+    "R lido como P": 1215,
+    "Z lido como 2": 1213,
+    "E lido como F": 1194,
+    "P lido como R": 1183
   },
   "melhor_metodo": "C. votação + regra",
   "erros_restantes_por_estado_pct": {

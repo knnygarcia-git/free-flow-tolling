@@ -28,6 +28,7 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 
 from comum import (AZUL, CINZA, DIA_TESTE, DIAS_TREINO, FIG, LARANJA, TAB, VERMELHO, carregar,
                    leituras)
+from comum import ALERTA, AMBAR, CINZA_CLARO, TINTA_2, TINTA_3, br, grade_x, salvar, titulo
 
 JANELA_MIN = 10
 LIMIAR_INGENUO = 0.85
@@ -112,41 +113,51 @@ def main():
     print(json.dumps(resumo, indent=2, ensure_ascii=False))
 
     # ---------------------------------------------------------------- figura
-    fig, axes = plt.subplots(2, 1, figsize=(9, 6.4), sharex=True)
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    nomes_falha = {"lente suja (gradual)": "a lente começa a sujar",
+                   "iluminador IR queimado": "o flash infravermelho queima"}
+    fig, axes = plt.subplots(2, 1, figsize=(9, 6.2), sharex=True)
     for ax, ((portico, faixa), (nome, ini)) in zip(axes, FALHAS.items()):
         s = series[(DIA_TESTE, portico, faixa)]
-        for h0, h1 in _intervalos(s, "chuva"):
-            ax.axvspan(h0, h1, color=AZUL, alpha=0.10, lw=0)
         for h0, h1 in _intervalos(s, "noite"):
-            ax.axvspan(h0, h1, color=CINZA, alpha=0.12, lw=0)
-        ax.plot(s["hora"], s["taxa_esp"], color=CINZA, lw=1.5, label="esperado pelo modelo")
-        ax.plot(s["hora"], s["taxa"], color=AZUL, lw=1.3, label="observado")
-        ax.axhline(LIMIAR_INGENUO, color=LARANJA, ls=":", lw=1)
+            ax.axvspan(h0, h1, color="#f1f4f2", lw=0)
+        for h0, h1 in _intervalos(s, "chuva"):
+            ax.axvspan(h0, h1, color=AZUL, alpha=0.08, lw=0)
+        ax.plot(s["hora"], s["taxa_esp"], color=CINZA, lw=1.6)
+        ax.plot(s["hora"], s["taxa"], color=AZUL, lw=1.6)
         ing = s[s["alarme_ingenuo"]]
-        ax.scatter(ing["hora"], np.full(len(ing), 0.31), marker="|", color=LARANJA, s=60,
-                   label="alarme ingênuo (taxa < 85%)")
+        ax.scatter(ing["hora"], np.full(len(ing), 0.30), marker="|", color=AMBAR, s=70, lw=1.6)
+        ax.axvline(ini, color=TINTA_3, lw=1)
+        ax.annotate(nomes_falha[nome], (ini, 0.55), xytext=(-6, 0), textcoords="offset points",
+                    ha="right", fontsize=8.5, color=TINTA_2)
         al = s[s["alarme"]]
         if len(al):
             h_al = al["hora"].iloc[0]
-            ax.axvline(h_al, color=VERMELHO, lw=2)
+            ax.axvline(h_al, color=ALERTA, lw=2)
             atraso = (h_al - ini) * 60
-            quando = ("na 1ª janela de 10 min" if atraso < JANELA_MIN else f"{atraso:.0f} min após a falha")
-            ax.text(h_al + 0.15, 0.42, f"alarme do modelo\n{quando}",
-                    color=VERMELHO, fontsize=8)
-        ax.axvline(ini, color="#333", ls="--", lw=1)
-        ax.text(ini - 0.15, 0.42, f"início: {nome}", ha="right", fontsize=8)
-        ax.set_ylim(0.25, 1.02)
-        ax.set_title(f"{portico} · faixa {faixa}", fontsize=10, loc="left")
-        ax.set_ylabel("leituras confiáveis")
-    h, l = axes[0].get_legend_handles_labels()
-    fig.legend(h, l, frameon=False, fontsize=8, loc="upper center", ncol=3, bbox_to_anchor=(0.5, 0.95))
-    axes[1].set_xlabel("hora do dia (dia de teste) · faixa azul = chuva · cinza = noite")
+            quando = "nos primeiros 10 min" if atraso < JANELA_MIN else f"{atraso:.0f} min depois"
+            ax.annotate(f"o modelo avisa\n{quando}", (h_al, 0.55), xytext=(6, 0),
+                        textcoords="offset points", fontsize=8.5, color=ALERTA, va="center")
+        ax.set_ylim(0.22, 1.04)
+        ax.set_yticks([0.4, 0.6, 0.8, 1.0], ["40%", "60%", "80%", "100%"])
+        ax.text(0, 1.06, f"{portico} · faixa {faixa}", transform=ax.transAxes, fontsize=9.5,
+                fontweight="medium", color=TINTA_2)
     axes[1].set_xlim(0, 24)
-    axes[1].set_xticks(range(0, 25, 3))
-    fig.suptitle("Saúde dos sensores: observado × esperado, com CUSUM", fontweight="bold")
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
-    fig.savefig(FIG / "11_saude_sensores.png")
-    plt.close(fig)
+    axes[1].set_xticks(range(0, 25, 3), [f"{h}h" for h in range(0, 25, 3)])
+    axes[1].spines["bottom"].set_color(CINZA_CLARO)
+    legenda = [Line2D([], [], color=AZUL, lw=2, label="o que a câmera leu"),
+               Line2D([], [], color=CINZA, lw=2, label="o que ela deveria ler"),
+               Line2D([], [], color=AMBAR, marker="|", lw=0, markersize=10, markeredgewidth=1.6,
+                      label="alarme simples (abaixo de 85%)"),
+               Patch(color=AZUL, alpha=0.15, label="chuva"),
+               Patch(color="#e6ebe8", label="noite")]
+    fig.tight_layout(h_pad=2.2)
+    fig.legend(handles=legenda, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=5,
+               fontsize=8.5, handlelength=1.6, columnspacing=1.4)
+    titulo(fig, "O alarme que não se assusta com chuva",
+           "Placas lidas com segurança a cada 10 minutos, no dia de teste (dados simulados).")
+    salvar(fig, FIG / "11_saude_sensores.png")
 
     tab.to_csv(TAB / "exp3_alarmes.csv", index=False)
     (TAB / "exp3_resultados.json").write_text(json.dumps(

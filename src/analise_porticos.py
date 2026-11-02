@@ -22,12 +22,8 @@ TAB = ROOT / "reports" / "tabelas"
 FIG.mkdir(parents=True, exist_ok=True)
 TAB.mkdir(parents=True, exist_ok=True)
 
-# Paleta simples e consistente
-AZUL, CINZA, LARANJA = "#2a6fdb", "#9aa3ad", "#e8833a"
-plt.rcParams.update({
-    "figure.dpi": 130, "axes.spines.top": False, "axes.spines.right": False,
-    "axes.titleweight": "bold", "axes.titlesize": 12, "font.size": 10,
-})
+from estilo import (AZUL, CINZA, CINZA_CLARO, TINTA_2, TINTA_3, VERDE, br, grade_x, salvar,
+                    titulo)
 
 
 def carregar() -> pd.DataFrame:
@@ -55,16 +51,19 @@ def resumo(df: pd.DataFrame) -> None:
 
 def fig_por_uf(df: pd.DataFrame) -> None:
     s = df.groupby("uf").porticos_no_registro.sum().sort_values()
-    fig, ax = plt.subplots(figsize=(7, 4))
-    cores = [LARANJA if uf == "PR" else AZUL for uf in s.index]
-    ax.barh(s.index, s.values, color=cores)
-    for i, v in enumerate(s.values):
-        ax.text(v + 0.4, i, str(v), va="center")
-    ax.set_title("Pórticos Free Flow cadastrados por UF")
-    ax.set_xlabel("pórticos físicos")
+    fig, ax = plt.subplots(figsize=(7.5, 3.8))
+    cores = [VERDE if uf == "PR" else CINZA_CLARO for uf in s.index]
+    ax.barh(s.index, s.values, color=cores, height=0.6)
+    for i, (uf, v) in enumerate(s.items()):
+        ax.text(v + 0.6, i, str(v), va="center", fontsize=9,
+                color=TINTA_2 if uf != "PR" else VERDE, fontweight="medium" if uf == "PR" else "regular")
+    grade_x(ax)
+    ax.set_xlim(0, s.max() * 1.12)
+    ax.tick_params(axis="y", labelsize=10)
     fig.tight_layout()
-    fig.savefig(FIG / "01_porticos_por_uf.png")
-    plt.close(fig)
+    titulo(fig, "Pórticos sem cancela por estado",
+           f"{s.sum()} pórticos no Brasil. O Paraná, em verde, tem {s['PR']}.")
+    salvar(fig, FIG / "01_porticos_por_uf.png")
 
 
 def fig_linha_do_tempo(df: pd.DataFrame) -> None:
@@ -73,32 +72,55 @@ def fig_linha_do_tempo(df: pd.DataFrame) -> None:
            .sort_index().cumsum())
     pr = (df[(df.uf == "PR")].dropna(subset=["data_ativacao"])
             .groupby("data_ativacao").porticos_no_registro.sum().sort_index().cumsum())
-    fig, ax = plt.subplots(figsize=(8, 4))
-    ax.step(d.index, d.values, where="post", color=AZUL, lw=2, label="Brasil")
-    ax.step(pr.index, pr.values, where="post", color=LARANJA, lw=2, label="Paraná")
-    ax.set_title("Crescimento acumulado de pórticos Free Flow ativados")
-    ax.set_ylabel("pórticos acumulados")
-    ax.legend(frameon=False)
-    fig.autofmt_xdate()
+    fim = d.index.max()
+    d.loc[fim + pd.Timedelta(days=20)] = d.iloc[-1]
+    pr.loc[fim + pd.Timedelta(days=20)] = pr.iloc[-1]
+    fig, ax = plt.subplots(figsize=(8, 3.8))
+    ax.step(d.index, d.values, where="post", color=AZUL, lw=2)
+    ax.step(pr.index, pr.values, where="post", color=VERDE, lw=2)
+    ax.fill_between(d.index, d.values, step="post", color=AZUL, alpha=0.07, lw=0)
+    for serie, nome, cor in ((d, "Brasil", AZUL), (pr, "Paraná", VERDE)):
+        ax.scatter([serie.index[-1]], [serie.iloc[-1]], s=36, color=cor, zorder=4,
+                   edgecolor="white", linewidth=2)
+        ax.annotate(f"{nome}: {int(serie.iloc[-1])}", (serie.index[-1], serie.iloc[-1]),
+                    xytext=(8, 0), textcoords="offset points", va="center", fontsize=9,
+                    color=TINTA_2)
+    ax.set_ylim(0, d.max() * 1.15)
+    ax.set_xlim(d.index.min(), fim + pd.Timedelta(days=120))
+    ax.spines["bottom"].set_color(CINZA_CLARO)
+    import matplotlib.dates as mdates
+    ax.xaxis.set_major_locator(mdates.MonthLocator(bymonth=[1, 7]))
+    meses = ["", "jan", "", "", "", "", "", "jul", "", "", "", "", ""]
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(
+        lambda x, _: f"{meses[mdates.num2date(x).month]} {mdates.num2date(x).year}"))
     fig.tight_layout()
-    fig.savefig(FIG / "02_linha_do_tempo_ativacoes.png")
-    plt.close(fig)
+    titulo(fig, "Quantos pórticos já cobravam, mês a mês",
+           "Total acumulado desde o primeiro, na BR-101 (RJ), em março de 2023.")
+    salvar(fig, FIG / "02_linha_do_tempo_ativacoes.png")
 
 
 def fig_parana(df: pd.DataFrame) -> pd.DataFrame:
     pr = df[df.uf == "PR"].copy()
-    pr["local"] = pr["sigla"] + " km " + pr["km"].map(lambda k: f"{k:g}") + " · " + pr["municipio"]
-    pr = pr.sort_values(["concessionaria", "sigla", "km"])
-    fig, ax = plt.subplots(figsize=(8, 4))
-    cores = [LARANJA if e else CINZA for e in pr.epr]
-    ax.barh(pr["local"], pr["porticos_no_registro"], color=cores)
+    pr["local"] = (pr["sigla"] + " · " + pr["municipio"].str.replace("Presidente", "Pres.")
+                   + " · km " + pr["km"].map(lambda k: br(k, 1)))
+    pr = pr.sort_values(["epr", "concessionaria", "sigla", "km"], ascending=[False, True, True, True])
+    fig, ax = plt.subplots(figsize=(8, 4.4))
+    cores = [VERDE if e else CINZA_CLARO for e in pr.epr]
+    pos = range(len(pr))
+    ax.barh(pos, pr["porticos_no_registro"], color=cores, height=0.55)
+    ax.set_yticks(list(pos), pr["local"])
+    for i, (n, emp) in enumerate(zip(pr["porticos_no_registro"], pr["concessionaria"])):
+        emp = emp.split(" (")[0]
+        ax.text(n + 0.05, i, f"{n}  ·  {emp}", va="center", fontsize=8.5, color=TINTA_3)
     ax.invert_yaxis()
-    ax.set_title("Paraná: pórticos por local (laranja = grupo EPR)")
-    ax.set_xlabel("pórticos no local")
+    grade_x(ax)
     ax.set_xticks([0, 1, 2])
+    ax.set_xlim(0, 3.4)
+    ax.set_xlabel("pórticos no local")
     fig.tight_layout()
-    fig.savefig(FIG / "03_porticos_parana.png")
-    plt.close(fig)
+    titulo(fig, "Os pórticos do Paraná",
+           "Em verde, os da EPR. A EPR Paraná tem dois em cada ponto, um por sentido.")
+    salvar(fig, FIG / "03_porticos_parana.png")
     cols = ["concessionaria", "rodovia", "sigla", "municipio", "km", "sentido",
             "porticos_no_registro", "data_ativacao", "status"]
     pr[cols].to_csv(TAB / "porticos_parana.csv", index=False)

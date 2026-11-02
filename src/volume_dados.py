@@ -28,6 +28,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from estilo import AMBAR, AZUL, CINZA, CINZA_CLARO, TINTA_2, TINTA_3, VERDE, br, grade_x, salvar, titulo
+
 ROOT = Path(__file__).resolve().parents[1]
 FIG = ROOT / "reports" / "figures"
 TAB = ROOT / "reports" / "tabelas"
@@ -162,24 +164,33 @@ def tabela_cenarios(p: Portico, ev: PacoteEvidencia, n_locais: int = 4) -> pd.Da
 def fig_24h(ev: PacoteEvidencia) -> None:
     minutos = np.arange(1440)
     frac_min = np.repeat(PERFIL_HORARIO, 60) / 60
-    # Suaviza a transição entre horas
-    frac_min = np.convolve(frac_min, np.ones(31) / 31, mode="same")
+    frac_min = np.convolve(np.r_[frac_min[-60:], frac_min, frac_min[:60]], np.ones(61) / 61,
+                           mode="same")[60:-60]
     frac_min /= frac_min.sum()
-    fig, ax = plt.subplots(figsize=(9, 4))
-    cores = {"baixo": "#9aa3ad", "médio": "#2a6fdb", "alto": "#e8833a"}
+    fig, ax = plt.subplots(figsize=(8.5, 3.9))
+    cores = {"baixo": AZUL, "médio": VERDE, "alto": AMBAR}
+    rotulos = {"baixo": "8 mil veículos/dia", "médio": "20 mil", "alto": "40 mil"}
     for nome, vdm in CENARIOS_VDM.items():
         mb_min = vdm * frac_min * ev.total / MB
-        ax.plot(minutos / 60, mb_min, color=cores[nome], lw=2,
-                label=f"VDM {vdm:,}".replace(",", ".") + f" ({nome})")
+        ax.plot(minutos / 60, mb_min, color=cores[nome], lw=2)
+        if nome == "alto":
+            ax.fill_between(minutos / 60, mb_min, color=cores[nome], alpha=0.08, lw=0)
+        ax.annotate(rotulos[nome], (24, mb_min[-1]), xytext=(6, 0), textcoords="offset points",
+                    va="center", fontsize=9, color=TINTA_2)
+    pico = CENARIOS_VDM["alto"] * frac_min.max() * ev.total / MB
+    h_pico = minutos[np.argmax(frac_min)] / 60
+    ax.scatter([h_pico], [pico], s=36, color=AMBAR, zorder=4, edgecolor="white", linewidth=2)
+    ax.annotate(f"pico: {br(pico)} MB por minuto", (h_pico, pico), xytext=(-8, 6),
+                textcoords="offset points", ha="right", fontsize=9, color=TINTA_2)
     ax.set_xlim(0, 24)
-    ax.set_xticks(range(0, 25, 3))
-    ax.set_xlabel("hora do dia")
-    ax.set_ylabel("MB por minuto (evidências)")
-    ax.set_title("Dados de evidência gerados por minuto em UM local (2 sentidos)")
-    ax.legend(frameon=False)
+    ax.set_ylim(0, pico * 1.18)
+    ax.set_xticks(range(0, 25, 3), [f"{h}h" for h in range(0, 25, 3)])
+    ax.set_ylabel("MB por minuto")
+    ax.spines["bottom"].set_color(CINZA_CLARO)
     fig.tight_layout()
-    fig.savefig(FIG / "04_dados_por_minuto_24h.png")
-    plt.close(fig)
+    titulo(fig, "Dados gerados ao longo do dia, num ponto da rodovia",
+           "Fotos e registros dos dois sentidos, em três níveis de movimento (suposições).")
+    salvar(fig, FIG / "04_dados_por_minuto_24h.png")
 
 
 def fig_camadas(p: Portico, ev: PacoteEvidencia) -> None:
@@ -187,26 +198,31 @@ def fig_camadas(p: Portico, ev: PacoteEvidencia) -> None:
     fixas = taxas_fixas(p)
     veic_min = CENARIOS_VDM["médio"] * PERFIL_HORARIO.max() / 60 / 2   # um sentido
     camadas = {
-        "A. Bruto no sensor\n(todas as câmeras)": fixas["A_bruto_sensor_Bps"] * 60,
-        "B. Vídeo de auditoria\n(H.265)": fixas["B_video_auditoria_Bps"] * 60,
-        "C. Evidências\n(fotos + laser + JSON)": veic_min * ev.total,
-        "D. Transações\n(backoffice)": veic_min * TRANSACAO_BYTES,
+        "O que as câmeras enxergam": fixas["A_bruto_sensor_Bps"] * 60,
+        "Vídeo gravado (se a empresa guardar)": fixas["B_video_auditoria_Bps"] * 60,
+        "Fotos e provas de cada carro": veic_min * ev.total,
+        "Registros enviados para cobrança": veic_min * TRANSACAO_BYTES,
     }
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(8.5, 3.4))
     nomes, vals = list(camadas), [v / MB for v in camadas.values()]
-    barras = ax.barh(nomes, vals, color=["#c9d3dd", "#9aa3ad", "#2a6fdb", "#e8833a"])
+    cores = [CINZA_CLARO, CINZA_CLARO, VERDE, AMBAR]
+    pos = np.arange(len(nomes))
+    ax.barh(pos, vals, color=cores, height=0.55)
+    ax.set_yticks(pos, nomes)
     ax.set_xscale("log")
     ax.invert_yaxis()
-    for b, v in zip(barras, vals):
-        txt = f"{v/1000:,.1f} GB/min" if v >= 1000 else (f"{v:,.1f} MB/min" if v >= 1
-                                                          else f"{v*1000:,.0f} KB/min")
-        ax.text(v * 1.15, b.get_y() + b.get_height() / 2, txt, va="center")
-    ax.set_xlim(0.01, max(vals) * 30)
-    ax.set_xlabel("MB por minuto (escala log)")
-    ax.set_title(f"Um pórtico, um sentido, hora de pico (~{veic_min:.0f} veículos/min)")
+    for i, v in enumerate(vals):
+        txt = (f"{br(v / 1000, 1)} GB" if v >= 1000 else
+               (f"{br(v, 1)} MB" if v >= 1 else f"{br(v * 1000)} KB"))
+        ax.text(v * 1.25, i, txt, va="center", fontsize=9.5, color=TINTA_2, fontweight="medium")
+    grade_x(ax)
+    ax.set_xlim(0.01, max(vals) * 40)
+    ax.set_xticks([0.01, 1, 100, 1e4], ["10 KB", "1 MB", "100 MB", "10 GB"])
+    ax.tick_params(axis="y", labelsize=9.5, labelcolor=TINTA_2)
     fig.tight_layout()
-    fig.savefig(FIG / "05_camadas_de_dados.png")
-    plt.close(fig)
+    titulo(fig, "Um minuto de pico num pórtico",
+           f"Cerca de {veic_min:.0f} carros por minuto num sentido. Escala logarítmica: cada linha da grade é 100 vezes a anterior.")
+    salvar(fig, FIG / "05_camadas_de_dados.png")
 
 
 if __name__ == "__main__":
