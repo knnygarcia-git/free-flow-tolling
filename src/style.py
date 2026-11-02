@@ -37,7 +37,7 @@ def apply() -> str:
         family = "Poppins"
     mpl.rcParams.update({
         "font.family": family,
-        "font.size": 10,
+        "font.size": 12,
         "font.weight": "regular",
         "text.color": INK,
         "figure.facecolor": BACKGROUND,
@@ -45,7 +45,7 @@ def apply() -> str:
         "axes.edgecolor": LIGHT_GRAY,
         "axes.linewidth": 1,
         "axes.labelcolor": INK_3,
-        "axes.labelsize": 9,
+        "axes.labelsize": 12,
         "axes.spines.top": False,
         "axes.spines.right": False,
         "axes.spines.left": False,
@@ -57,14 +57,14 @@ def apply() -> str:
         "grid.linestyle": "-",
         "xtick.color": INK_3,
         "ytick.color": INK_3,
-        "xtick.labelsize": 9,
-        "ytick.labelsize": 9,
+        "xtick.labelsize": 11.5,
+        "ytick.labelsize": 11.5,
         "xtick.major.size": 0,
         "ytick.major.size": 0,
         "xtick.major.pad": 6,
         "ytick.major.pad": 6,
         "legend.frameon": False,
-        "legend.fontsize": 9,
+        "legend.fontsize": 11.5,
         "legend.labelcolor": INK_2,
         "lines.linewidth": 2,
         "lines.solid_capstyle": "round",
@@ -81,18 +81,25 @@ def apply() -> str:
 
 
 def title(fig, text: str, sub: str | None = None):
-    """Left-aligned title above the plot area, with one line of explanation under it.
-    It sits outside the figure and gets into the image through savefig's 'tight' bbox."""
+    """Left-aligned title above the plot area, with one or two lines of explanation under it.
+    Long text is wrapped to the figure width. It sits outside the figure and gets into the
+    image through savefig's 'tight' bbox."""
+    import textwrap
     from matplotlib.transforms import offset_copy
     fig.canvas.draw()
     x0 = min(ax.get_tightbbox(fig.canvas.get_renderer()).x0 for ax in fig.axes) / fig.bbox.width
-    y_sub = offset_copy(fig.transFigure, fig=fig, y=8, units="points")
-    y_title = offset_copy(fig.transFigure, fig=fig, y=26 if sub else 10, units="points")
-    fig.text(x0, 1.0, text, ha="left", va="bottom", fontsize=14, fontweight="semibold",
-             color=INK, transform=y_title)
-    if sub:
-        fig.text(x0, 1.0, sub, ha="left", va="bottom", fontsize=9.5, color=INK_3,
-                 transform=y_sub)
+    width_pt = fig.get_figwidth() * 72 * (1 - x0)
+    title_lines = textwrap.wrap(text, max(20, int(width_pt / (18 * 0.56))))
+    sub_lines = textwrap.wrap(sub, max(30, int(width_pt / (12.5 * 0.5)))) if sub else []
+    sub_h = 12.5 * 1.35 * len(sub_lines)
+    y_sub = offset_copy(fig.transFigure, fig=fig, y=10, units="points")
+    y_title = offset_copy(fig.transFigure, fig=fig, y=10 + sub_h + (8 if sub_lines else 0),
+                          units="points")
+    fig.text(x0, 1.0, "\n".join(title_lines), ha="left", va="bottom", fontsize=18,
+             fontweight="semibold", color=INK, transform=y_title, linespacing=1.2)
+    if sub_lines:
+        fig.text(x0, 1.0, "\n".join(sub_lines), ha="left", va="bottom", fontsize=12.5,
+                 color=INK_3, transform=y_sub, linespacing=1.35)
 
 
 def grid_x(ax):

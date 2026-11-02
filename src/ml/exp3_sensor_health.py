@@ -117,7 +117,7 @@ def main():
     # ---------------------------------------------------------------- figure
     failure_text = {"dirty lens (gradual)": "the lens starts getting dirty",
                     "burnt-out IR illuminator": "the infrared flash burns out"}
-    fig, axes = plt.subplots(2, 1, figsize=(9, 6.2), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(9, 7.2), sharex=True)
     for ax, ((gantry, lane), (name, start)) in zip(axes, FAILURES.items()):
         s = series[(TEST_DAY, gantry, lane)]
         for h0, h1 in _intervals(s, "night"):
@@ -130,7 +130,7 @@ def main():
         ax.scatter(naive["hour"], np.full(len(naive), 0.30), marker="|", color=AMBER, s=70, lw=1.6)
         ax.axvline(start, color=INK_3, lw=1)
         ax.annotate(failure_text[name], (start, 0.55), xytext=(-6, 0), textcoords="offset points",
-                    ha="right", fontsize=8.5, color=INK_2)
+                    ha="right", fontsize=11.5, color=INK_2)
         al = s[s["alarm"]]
         if len(al):
             h_al = al["hour"].iloc[0]
@@ -138,10 +138,10 @@ def main():
             delay = (h_al - start) * 60
             when = "within the first 10 min" if delay < WINDOW_MIN else f"{delay:.0f} min later"
             ax.annotate(f"the model warns\n{when}", (h_al, 0.55), xytext=(6, 0),
-                        textcoords="offset points", fontsize=8.5, color=ALERT, va="center")
+                        textcoords="offset points", fontsize=11.5, color=ALERT, va="center")
         ax.set_ylim(0.22, 1.04)
         ax.set_yticks([0.4, 0.6, 0.8, 1.0], ["40%", "60%", "80%", "100%"])
-        ax.text(0, 1.06, f"{gantry} · lane {lane}", transform=ax.transAxes, fontsize=9.5,
+        ax.text(0, 1.06, f"{gantry} · lane {lane}", transform=ax.transAxes, fontsize=12.5,
                 fontweight="medium", color=INK_2)
     axes[1].set_xlim(0, 24)
     axes[1].set_xticks(range(0, 25, 3), [f"{h}:00" for h in range(0, 25, 3)])
@@ -154,7 +154,7 @@ def main():
               Patch(color="#e6ebe8", label="night")]
     fig.tight_layout(h_pad=2.2)
     fig.legend(handles=legend, loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=5,
-               fontsize=8.5, handlelength=1.6, columnspacing=1.4)
+               fontsize=11.5, handlelength=1.6, columnspacing=1.4)
     title(fig, "The alarm that doesn't panic when it rains",
           "Plates read with confidence, every 10 minutes, on the test day (simulated data).")
     save(fig, FIG / "11_sensor_health.png")

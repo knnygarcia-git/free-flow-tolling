@@ -167,7 +167,7 @@ def fig_24h(ev: EvidencePackage) -> None:
     frac_min = np.convolve(np.r_[frac_min[-60:], frac_min, frac_min[:60]], np.ones(61) / 61,
                            mode="same")[60:-60]
     frac_min /= frac_min.sum()
-    fig, ax = plt.subplots(figsize=(8.5, 3.9))
+    fig, ax = plt.subplots(figsize=(8.5, 4.6))
     colors = {"low": BLUE, "medium": GREEN, "high": AMBER}
     labels = {"low": "8k vehicles/day", "medium": "20k", "high": "40k"}
     for name, aadt in AADT_SCENARIOS.items():
@@ -176,12 +176,12 @@ def fig_24h(ev: EvidencePackage) -> None:
         if name == "high":
             ax.fill_between(minutes / 60, mb_min, color=colors[name], alpha=0.08, lw=0)
         ax.annotate(labels[name], (24, mb_min[-1]), xytext=(6, 0), textcoords="offset points",
-                    va="center", fontsize=9, color=INK_2)
+                    va="center", fontsize=12, color=INK_2)
     peak = AADT_SCENARIOS["high"] * frac_min.max() * ev.total / MB
     h_peak = minutes[np.argmax(frac_min)] / 60
     ax.scatter([h_peak], [peak], s=36, color=AMBER, zorder=4, edgecolor="white", linewidth=2)
     ax.annotate(f"peak: {num(peak)} MB per minute", (h_peak, peak), xytext=(-8, 6),
-                textcoords="offset points", ha="right", fontsize=9, color=INK_2)
+                textcoords="offset points", ha="right", fontsize=12, color=INK_2)
     ax.set_xlim(0, 24)
     ax.set_ylim(0, peak * 1.18)
     ax.set_xticks(range(0, 25, 3), [f"{h}:00" for h in range(0, 25, 3)])
@@ -203,7 +203,7 @@ def fig_layers(g: Gantry, ev: EvidencePackage) -> None:
         "Photos and evidence for each car": veh_min * ev.total,
         "Records sent for billing": veh_min * TRANSACTION_BYTES,
     }
-    fig, ax = plt.subplots(figsize=(8.5, 3.4))
+    fig, ax = plt.subplots(figsize=(8.5, 4.0))
     names, vals = list(layers), [v / MB for v in layers.values()]
     colors = [LIGHT_GRAY, LIGHT_GRAY, GREEN, AMBER]
     pos = np.arange(len(names))
@@ -214,11 +214,11 @@ def fig_layers(g: Gantry, ev: EvidencePackage) -> None:
     for i, v in enumerate(vals):
         txt = (f"{num(v / 1000, 1)} GB" if v >= 1000 else
                (f"{num(v, 1)} MB" if v >= 1 else f"{num(v * 1000)} KB"))
-        ax.text(v * 1.25, i, txt, va="center", fontsize=9.5, color=INK_2, fontweight="medium")
+        ax.text(v * 1.25, i, txt, va="center", fontsize=12.5, color=INK_2, fontweight="medium")
     grid_x(ax)
     ax.set_xlim(0.01, max(vals) * 40)
     ax.set_xticks([0.01, 1, 100, 1e4], ["10 KB", "1 MB", "100 MB", "10 GB"])
-    ax.tick_params(axis="y", labelsize=9.5, labelcolor=INK_2)
+    ax.tick_params(axis="y", labelsize=12.5, labelcolor=INK_2)
     fig.tight_layout()
     title(fig, "One peak minute at one gantry",
           f"About {veh_min:.0f} cars per minute in one direction. Log scale: each grid line is 100 times the previous one.")

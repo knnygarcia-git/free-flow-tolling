@@ -97,7 +97,7 @@ def main():
     print("\nWrong charges avoided by the model:\n" + kinds.to_string())
 
     # ---------------------------------------------------------------- figures
-    fig, ax = plt.subplots(figsize=(8.5, 4.2))
+    fig, ax = plt.subplots(figsize=(8.5, 5.0))
     y_mod, y_rule = costs / len(te) * 1e4, costs_rule / len(te) * 1e4
     ax.plot(ts_conf, y_rule, color=GRAY, lw=2)
     ax.plot(ts, y_mod, color=GREEN, lw=2)
@@ -106,14 +106,14 @@ def main():
     m = costs.min() / len(te) * 1e4
     ax.scatter([0.90], [b], s=40, color=GRAY, zorder=4, edgecolor="white", linewidth=2)
     ax.annotate(f"common rule (90%)\nR$ {num(b)}", (0.90, b), xytext=(-12, -34),
-                textcoords="offset points", ha="right", fontsize=9, color=INK_2)
+                textcoords="offset points", ha="right", fontsize=12, color=INK_2)
     ax.scatter([t_best], [m], s=40, color=GREEN, zorder=4, edgecolor="white", linewidth=2)
     ax.annotate(f"model at its best cut-off\nR$ {num(m)}", (t_best, m), xytext=(-10, 14),
-                textcoords="offset points", ha="right", fontsize=9, color=INK_2)
-    ax.annotate("rule: cut by the camera's confidence", (0.6, y_rule[np.searchsorted(ts_conf, 0.6)]),
-                xytext=(0, 8), textcoords="offset points", fontsize=9, color=INK_3)
-    ax.annotate("model: cut by the real chance of being right", (0.6, y_mod[np.searchsorted(ts, 0.6)]),
-                xytext=(0, 8), textcoords="offset points", fontsize=9, color=INK_3)
+                textcoords="offset points", ha="right", fontsize=12, color=INK_2)
+    ax.annotate("rule: cut by the camera's confidence", (0.51, y_rule[np.searchsorted(ts_conf, 0.51)]),
+                xytext=(0, 8), textcoords="offset points", fontsize=12, color=INK_3)
+    ax.annotate("model: cut by the real chance of being right", (0.51, y_mod[np.searchsorted(ts, 0.51)]),
+                xytext=(0, 8), textcoords="offset points", fontsize=12, color=INK_3)
     ax.set_xlim(0.5, 1.0)
     ax.set_ylim(0, max(y_rule.max(), y_mod.max()) * 1.1)
     ax.set_xticks([0.5, 0.6, 0.7, 0.8, 0.9, 1.0], ["50%", "60%", "70%", "80%", "90%", "100%"])
@@ -127,11 +127,11 @@ def main():
 
     # calibration: raw camera confidence vs. the model's probability (passes without a tag)
     ocr = (te["source"] == "ocr").to_numpy()
-    fig, ax = plt.subplots(figsize=(5.6, 5.0))
+    fig, ax = plt.subplots(figsize=(6.4, 6.0))
     ax.grid(True, axis="both")
     ax.plot([0, 1], [0, 1], color=LIGHT_GRAY, lw=1.5)
     ax.annotate("perfect forecast", (0.42, 0.42), xytext=(6, -14), textcoords="offset points",
-                fontsize=8.5, color=INK_3, rotation=45)
+                fontsize=11.5, color=INK_3, rotation=45)
     edges = np.array([0, 0.5, 0.7, 0.8, 0.9, 0.95, 0.98, 0.99, 0.995, 1.0001])
     for name, score, color in [("camera confidence", te["conf_best"].to_numpy()[ocr], AMBER),
                                ("model probability", p[ocr], GREEN)]:
@@ -162,12 +162,12 @@ def main():
     imp = permutation_importance(model, sample[FEATURES], sample["correct"], scoring="roc_auc",
                                  n_repeats=4, random_state=0)
     s = pd.Series(imp.importances_mean, index=[NAMES[f] for f in FEATURES]).sort_values().tail(8)
-    fig, ax = plt.subplots(figsize=(8, 3.8))
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
     pos = np.arange(len(s))
     colors = [LIGHT_GRAY] * (len(s) - 1) + [GREEN]
     ax.barh(pos, s.values, color=colors, height=0.6)
     ax.set_yticks(pos, s.index)
-    ax.tick_params(axis="y", labelsize=9.5, labelcolor=INK_2)
+    ax.tick_params(axis="y", labelsize=12.5, labelcolor=INK_2)
     grid_x(ax)
     ax.set_xticks([])
     fig.tight_layout()
@@ -186,16 +186,16 @@ def main():
                "gb_day_risk_based_policy": round(gb_new, 2),
                "reduction_pct": round(100 * (1 - gb_new / gb_now), 1),
                "full_packages_pct": round(100 * full.mean(), 1)}
-    fig, ax = plt.subplots(figsize=(8, 2.4))
+    fig, ax = plt.subplots(figsize=(8.5, 2.8))
     ax.barh([1, 0], [gb_now, gb_new], color=[LIGHT_GRAY, GREEN], height=0.45)
     ax.set_yticks([1, 0], ["Keep every photo", "Keep according to risk"])
     for yv, v in ((1, gb_now), (0, gb_new)):
-        ax.text(v + gb_now * 0.015, yv, f"{num(v, 1)} GB per day", va="center", fontsize=9.5,
+        ax.text(v + gb_now * 0.015, yv, f"{num(v, 1)} GB per day", va="center", fontsize=12.5,
                 color=INK_2, fontweight="medium")
     grid_x(ax)
     ax.set_xticks([])
     ax.set_xlim(0, gb_now * 1.3)
-    ax.tick_params(axis="y", labelsize=10, labelcolor=INK_2)
+    ax.tick_params(axis="y", labelsize=12.5, labelcolor=INK_2)
     fig.tight_layout()
     title(fig, f"{num(storage['reduction_pct'])}% less storage by keeping full photos only when needed",
           "4 simulated gantries. The slim version is kept for tags confirmed by the plate.")

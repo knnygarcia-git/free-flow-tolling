@@ -59,15 +59,15 @@ def summary(df: pd.DataFrame) -> None:
 
 def fig_by_state(df: pd.DataFrame) -> None:
     s = df.groupby("state").gantries.sum().sort_values()
-    fig, ax = plt.subplots(figsize=(7.5, 3.8))
+    fig, ax = plt.subplots(figsize=(8.5, 4.6))
     colors = [GREEN if st == "PR" else LIGHT_GRAY for st in s.index]
     ax.barh(s.index, s.values, color=colors, height=0.6)
     for i, (st, v) in enumerate(s.items()):
-        ax.text(v + 0.6, i, str(v), va="center", fontsize=9,
+        ax.text(v + 0.6, i, str(v), va="center", fontsize=12,
                 color=INK_2 if st != "PR" else GREEN, fontweight="medium" if st == "PR" else "regular")
     grid_x(ax)
     ax.set_xlim(0, s.max() * 1.12)
-    ax.tick_params(axis="y", labelsize=10)
+    ax.tick_params(axis="y", labelsize=12.5)
     fig.tight_layout()
     title(fig, "Barrier-free toll gantries by state",
           f"{s.sum()} gantries in Brazil. Paraná, in green, has {s['PR']}.")
@@ -83,7 +83,7 @@ def fig_timeline(df: pd.DataFrame) -> None:
     end = d.index.max()
     d.loc[end + pd.Timedelta(days=20)] = d.iloc[-1]
     pr.loc[end + pd.Timedelta(days=20)] = pr.iloc[-1]
-    fig, ax = plt.subplots(figsize=(8, 3.8))
+    fig, ax = plt.subplots(figsize=(8.5, 4.8))
     ax.step(d.index, d.values, where="post", color=BLUE, lw=2)
     ax.step(pr.index, pr.values, where="post", color=GREEN, lw=2)
     ax.fill_between(d.index, d.values, step="post", color=BLUE, alpha=0.07, lw=0)
@@ -91,7 +91,7 @@ def fig_timeline(df: pd.DataFrame) -> None:
         ax.scatter([series.index[-1]], [series.iloc[-1]], s=36, color=color, zorder=4,
                    edgecolor="white", linewidth=2)
         ax.annotate(f"{name}: {int(series.iloc[-1])}", (series.index[-1], series.iloc[-1]),
-                    xytext=(8, 0), textcoords="offset points", va="center", fontsize=9,
+                    xytext=(8, 0), textcoords="offset points", va="center", fontsize=12,
                     color=INK_2)
     ax.set_ylim(0, d.max() * 1.15)
     ax.set_xlim(d.index.min(), end + pd.Timedelta(days=120))
@@ -109,14 +109,14 @@ def fig_parana(df: pd.DataFrame) -> pd.DataFrame:
     pr["site"] = (pr["highway"] + " · " + pr["municipality"].str.replace("Presidente", "Pres.")
                   + " · km " + pr["km"].map(lambda k: num(k, 1)))
     pr = pr.sort_values(["epr", "concessionaire", "highway", "km"], ascending=[False, True, True, True])
-    fig, ax = plt.subplots(figsize=(8, 4.4))
+    fig, ax = plt.subplots(figsize=(9, 6.0))
     colors = [GREEN if e else LIGHT_GRAY for e in pr.epr]
     pos = range(len(pr))
     ax.barh(pos, pr["gantries"], color=colors, height=0.55)
     ax.set_yticks(list(pos), pr["site"])
     for i, (n, company) in enumerate(zip(pr["gantries"], pr["concessionaire"])):
         company = company.split(" (")[0]
-        ax.text(n + 0.05, i, f"{n}  ·  {company}", va="center", fontsize=8.5, color=INK_3)
+        ax.text(n + 0.05, i, f"{n}  ·  {company}", va="center", fontsize=11.5, color=INK_3)
     ax.invert_yaxis()
     grid_x(ax)
     ax.set_xticks([0, 1, 2])

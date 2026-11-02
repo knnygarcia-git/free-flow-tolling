@@ -138,7 +138,7 @@ def main():
              "B. + Mercosur rule": "Best photo + format rule",
              "C. vote + rule": "Vote across photos + rule",
              "D. confusion model": "Model of confused letters"}
-    fig, ax = plt.subplots(figsize=(8.5, 3.4))
+    fig, ax = plt.subplots(figsize=(8.5, 4.0))
     pos = np.arange(len(tab))
     winner = int(tab["errors_per_10k"].idxmin())
     colors = [GREEN if i == winner else LIGHT_GRAY for i in range(len(tab))]
@@ -146,12 +146,12 @@ def main():
     ax.set_yticks(pos, [names[m] for m in tab["method"]])
     for i, (e, r) in enumerate(zip(tab["errors_per_10k"], tab["error_reduction_pct"])):
         txt = num(e) + ("" if i == 0 else f"   −{num(r)}%")
-        ax.text(e + base_err * 0.015, i, txt, va="center", fontsize=9.5, color=INK_2,
+        ax.text(e + base_err * 0.015, i, txt, va="center", fontsize=12.5, color=INK_2,
                 fontweight="medium" if i == winner else "regular")
     ax.invert_yaxis()
     grid_x(ax)
     ax.set_xlim(0, base_err * 1.3)
-    ax.tick_params(axis="y", labelsize=9.5, labelcolor=INK_2)
+    ax.tick_params(axis="y", labelsize=12.5, labelcolor=INK_2)
     ax.set_xlabel("misread plates per 10,000 passes without a tag")
     fig.tight_layout()
     title(fig, "Voting across photos fixes 30% of the errors",
@@ -166,16 +166,16 @@ def main():
                 if a != b:
                     count.append(f"{a} read as {b}")
     top = pd.Series(count).value_counts().head(10)[::-1]
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(8.5, 5.4))
     pos = np.arange(len(top))
     ax.barh(pos, top.values, color=BLUE, height=0.6)
     ax.set_yticks(pos, top.index)
     for i, v in enumerate(top.values):
-        ax.text(v + top.max() * 0.015, i, num(v), va="center", fontsize=9, color=INK_3)
+        ax.text(v + top.max() * 0.015, i, num(v), va="center", fontsize=12, color=INK_3)
     grid_x(ax)
     ax.set_xticks([])
     ax.set_xlim(0, top.max() * 1.15)
-    ax.tick_params(axis="y", labelsize=9.5, labelcolor=INK_2)
+    ax.tick_params(axis="y", labelsize=12.5, labelcolor=INK_2)
     fig.tight_layout()
     title(fig, "The characters the camera confuses most",
           "Times each swap showed up in the training photos (simulated data).")
