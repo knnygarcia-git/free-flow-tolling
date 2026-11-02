@@ -5,7 +5,11 @@ foco nos pórticos da **EPR Paraná** (Lote 4: BR-369 e BR-376), que começaram 
 
 ![Simulação do pórtico](reports/figures/simulacao_portico.gif)
 
-*Simulação: detecção e rastreamento de veículos, OCR da placa, leitura de tag RFID,
+*Simulação: o pórtico aparece na cena com os sensores de cada faixa (① câmera ANPR com flash
+infravermelho, ② antena RFID, ③ laser 3D, ④ câmera de contexto) e a área que cada um cobre: a
+antena lê de 0 a 16 m antes do pórtico, a câmera fotografa a placa a 10 m e o laser mede os eixos
+exatamente sob a viga. Uma vista lateral embaixo mostra as mesmas distâncias. Também há
+detecção e rastreamento de veículos, OCR da placa, leitura de tag RFID,
 classificação por eixos e geração de dados em tempo real. **A cena é sintética**; a lógica do
 pipeline segue a de um pórtico real (ver [`docs/como_funciona.md`](docs/como_funciona.md)).*
 

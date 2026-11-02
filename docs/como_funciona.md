@@ -10,7 +10,8 @@ categoria) e **registrar a evidência** (fotos, horário, posição). Tudo acont
              │  [antena RFID]  [câmera ANPR + IR]  [laser 3D]  [contexto]│   ← um conjunto por faixa
              └──────────────────────────────────────────────────────────┘
                     │                 │                 │
-   ~30 m antes ─────┼── zona RFID ────┼─ disparo ANPR ──┼──── sob o pórtico ──→ sentido do tráfego
+  0–16 m antes ────┼── zona RFID ────┼─ disparo ANPR ──┼──── sob o pórtico ──→ sentido do tráfego
+                    │                 │  (~10 m antes)  │
                     ▼                 ▼                 ▼
               lê a tag (ms)     foto da placa     perfil, eixos, altura
                     └────────┬────────┴────────┬────────┘

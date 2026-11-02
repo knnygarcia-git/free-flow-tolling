@@ -39,22 +39,31 @@ FIG.mkdir(parents=True, exist_ok=True)
 TAB.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------- layout
-W, H = 1280, 720
+W, H = 1280, 820
 SCENE_W, SCENE_H = 900, 540
 PANEL_X = SCENE_W + 12
 FPS = 15
 
 # ---------------------------------------------------------------- câmera (pinhole simples)
-HORIZON_Y = 60           # linha do horizonte na imagem
+HORIZON_Y = 95           # linha do horizonte na imagem
 CAM_H = 6.0              # altura da câmera no pórtico (m)
 FOCAL = 900.0            # distância focal em pixels (lente tele, típica de ANPR)
 CX = SCENE_W * 0.47      # centro óptico horizontal
 LANE_W = 3.6             # largura da faixa (m)
 LANES_X = [-LANE_W / 2, LANE_W / 2]    # centro de cada faixa (m)
 SHOULDER_X = LANE_W + 1.5
-Z_MAX, Z_MIN = 120.0, 8.5
-Z_TRIGGER = 19.0         # linha de disparo da câmera ANPR
-Z_RFID = (13.0, 32.0)    # zona de leitura da antena RFID
+Z_MAX, Z_MIN = 120.0, 11.0
+# Posições na pista (distância z até a câmera que filma a cena, em metros)
+Z_GANTRY = 24.0          # o pórtico: estrutura sobre a pista; o laser varre exatamente aqui
+Z_TRIGGER = 34.0         # linha de disparo: a câmera ANPR fotografa a placa 10 m antes do pórtico
+Z_RFID = (24.0, 40.0)    # zona de leitura da antena RFID: 0 a 16 m antes do pórtico
+BEAM_H = 6.6             # altura da viga do pórtico (m)
+POSTE_X = (-LANE_W - 1.4, SHOULDER_X + 0.8)
+# cores dos sensores (BGR) - as mesmas na cena, na vista lateral e nas legendas
+COR_ANPR = (60, 60, 235)
+COR_RFID = (230, 160, 40)
+COR_LASER = (40, 210, 250)
+COR_CTX = (200, 120, 200)
 
 # ---------------------------------------------------------------- cores (BGR)
 AMARELO = (40, 200, 240)
@@ -100,9 +109,13 @@ F_SM, F_MD, F_LG, F_XL = fonte(12), fonte(14), fonte(18, True), fonte(30, True)
 F_BOX, F_MONO = fonte(13, True), fonte(12)
 
 
-def projetar(x: float, z: float) -> tuple[float, float]:
-    """Mundo (x lateral, z distância, chão y=0) -> pixel."""
-    return CX + FOCAL * x / z, HORIZON_Y + FOCAL * CAM_H / z
+def projetar(x: float, z: float, h: float = 0.0) -> tuple[float, float]:
+    """Mundo (x lateral, z distância, h altura) -> pixel."""
+    return CX + FOCAL * x / z, HORIZON_Y + FOCAL * (CAM_H - h) / z
+
+
+def ip(pt) -> tuple[int, int]:
+    return int(round(pt[0])), int(round(pt[1]))
 
 
 def placa_mercosul(rng: random.Random) -> str:
@@ -172,6 +185,10 @@ class Simulador:
         self.ultimo_recorte = None
         self.ultima_leitura = None
         self.estado = "Baixo"
+        self.portico = None
+        self.atividade = {}          # (sensor, faixa) -> instante da última leitura
+        self.t = 0.0
+        self.contagem_sensor = {"anpr": 0, "rfid": 0, "laser": 0}
 
     # ------------------------------------------------------------ dinâmica
     def gerar_chegadas(self, f: int):
@@ -227,6 +244,7 @@ class Simulador:
 
     def passo(self, f: int):
         t = f * self.dt
+        self.t = t
         self.gerar_chegadas(f)
         for faixa in (0, 1):
             fila = sorted([v for v in self.veiculos if v.faixa == faixa], key=lambda v: v.z)
@@ -242,11 +260,18 @@ class Simulador:
                 if Z_RFID[0] <= v.z <= Z_RFID[1] and v.tem_tag and not v.tag_lida:
                     if self.rng.random() < 0.35:        # várias tentativas de leitura na zona
                         v.tag_lida = True
+                        self.atividade[("rfid", v.faixa)] = t
+                        self.contagem_sensor["rfid"] += 1
                         v.tag_id = "E2801160" + "".join(self.rng.choices("0123456789ABCDEF", k=8))
                 if v.ocr is None and v.z <= Z_TRIGGER:
                     self.ler_ocr(v)
                     self.ultima_leitura = v
-                if v.ocr is not None and not v.evento_emitido and v.z <= Z_RFID[0]:
+                    self.atividade[("anpr", v.faixa)] = t
+                    self.contagem_sensor["anpr"] += 1
+                if v.ocr is not None and not v.evento_emitido and v.z <= Z_GANTRY:
+                    # passou sob o pórtico: o laser mede o perfil e fecha a passagem
+                    self.atividade[("laser", v.faixa)] = t
+                    self.contagem_sensor["laser"] += 1
                     self.fundir(v)
                     self.emitir_evento(v, t)
                 a, b = max(0, x1 // 6), max(0, y1 // 6)
@@ -304,15 +329,108 @@ class Simulador:
             cv2.line(img, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), (235, 235, 235),
                      max(1, int(14 / z * 3)), cv2.LINE_AA)
             z += 12
-        # zona RFID (faixa translúcida) e linha de disparo ANPR
+        # --- áreas cobertas por cada sensor, desenhadas no asfalto e como "feixes" saindo do pórtico
         sobre = img.copy()
-        q = [projetar(-LANE_W, Z_RFID[1]), projetar(LANE_W, Z_RFID[1]),
-             projetar(LANE_W, Z_RFID[0]), projetar(-LANE_W, Z_RFID[0])]
-        cv2.fillPoly(sobre, [np.array(q, np.int32)], (219, 160, 60))
-        cv2.addWeighted(sobre, 0.22, img, 0.78, 0, img)
+        for lx in LANES_X:
+            # antena RFID: lóbulo que cobre de 0 a 16 m antes do pórtico
+            q = [projetar(lx - 1.7, Z_RFID[1]), projetar(lx + 1.7, Z_RFID[1]),
+                 projetar(lx + 1.7, Z_RFID[0]), projetar(lx - 1.7, Z_RFID[0])]
+            cv2.fillPoly(sobre, [np.array(q, np.int32)], COR_RFID)
+        cv2.addWeighted(sobre, 0.25, img, 0.75, 0, img)
+        feixes = img.copy()
+        for lx in LANES_X:
+            ant = projetar(lx, Z_GANTRY, BEAM_H - 0.5)
+            q = [ant, projetar(lx - 1.7, Z_RFID[1]), projetar(lx + 1.7, Z_RFID[1])]
+            cv2.fillPoly(feixes, [np.array(q, np.int32)], COR_RFID)
+            cam = projetar(lx - 0.7, Z_GANTRY, BEAM_H - 0.4)
+            q = [cam, projetar(lx - 1.6, Z_TRIGGER + 1.2), projetar(lx + 1.6, Z_TRIGGER + 1.2),
+                 projetar(lx + 1.6, Z_TRIGGER - 1.2), projetar(lx - 1.6, Z_TRIGGER - 1.2)]
+            cv2.fillPoly(feixes, [cv2.convexHull(np.array(q, np.int32))], COR_ANPR)
+        cv2.addWeighted(feixes, 0.16, img, 0.84, 0, img)
+        # linha de disparo da câmera ANPR (10 m antes do pórtico)
         a, b = projetar(-LANE_W, Z_TRIGGER), projetar(LANE_W, Z_TRIGGER)
-        cv2.line(img, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])), (60, 60, 240), 2, cv2.LINE_AA)
+        cv2.line(img, ip(a), ip(b), COR_ANPR, 3, cv2.LINE_AA)
+        # linha do laser, exatamente sob o pórtico
+        a, b = projetar(-LANE_W, Z_GANTRY), projetar(LANE_W, Z_GANTRY)
+        cv2.line(img, ip(a), ip(b), COR_LASER, 3, cv2.LINE_AA)
         return img
+
+    def _camada_portico(self):
+        """Estrutura do pórtico com os sensores, como camada (imagem + máscara) que fica na
+        frente dos veículos que ainda não passaram e atrás dos que já passaram."""
+        img = np.zeros((SCENE_H, SCENE_W, 3), np.uint8)
+        z = Z_GANTRY
+        aco, aco_esc = (150, 150, 155), (95, 95, 100)
+        # postes
+        for x in POSTE_X:
+            b0, t0 = projetar(x - 0.25, z, 0), projetar(x + 0.25, z, BEAM_H + 0.6)
+            cv2.rectangle(img, ip(t0), ip(b0), aco, -1)
+            cv2.rectangle(img, ip(t0), ip(b0), aco_esc, 1)
+            sapata = (projetar(x - 0.6, z, 0), projetar(x + 0.6, z, 0.4))
+            cv2.rectangle(img, ip((sapata[0][0], sapata[1][1])), ip((sapata[1][0], sapata[0][1])),
+                          (120, 120, 125), -1)
+        # viga treliçada
+        xa, xb = POSTE_X[0] - 0.25, POSTE_X[1] + 0.25
+        topo, base = BEAM_H + 0.6, BEAM_H
+        cv2.line(img, ip(projetar(xa, z, topo)), ip(projetar(xb, z, topo)), aco, 3)
+        cv2.line(img, ip(projetar(xa, z, base)), ip(projetar(xb, z, base)), aco, 3)
+        xs = np.arange(xa, xb, 0.6)
+        for i, x in enumerate(xs[:-1]):
+            h1, h2 = (base, topo) if i % 2 == 0 else (topo, base)
+            cv2.line(img, ip(projetar(x, z, h1)), ip(projetar(xs[i + 1], z, h2)), aco_esc, 1,
+                     cv2.LINE_AA)
+        # sensores pendurados na viga, um conjunto por faixa
+        for lx in LANES_X:
+            # câmera ANPR (corpo + lente) e iluminador infravermelho
+            c0, c1 = projetar(lx - 1.0, z, base), projetar(lx - 0.4, z, base - 0.35)
+            cv2.rectangle(img, ip(c0), ip(c1), (40, 40, 45), -1)
+            cv2.rectangle(img, ip(c0), ip(c1), COR_ANPR, 2)
+            cv2.circle(img, ip(projetar(lx - 0.7, z, base - 0.18)), 3, (200, 200, 210), -1)
+            # antena RFID (painel plano)
+            a0, a1 = projetar(lx - 0.25, z, base), projetar(lx + 0.25, z, base - 0.55)
+            cv2.rectangle(img, ip(a0), ip(a1), (235, 235, 235), -1)
+            cv2.rectangle(img, ip(a0), ip(a1), COR_RFID, 2)
+            # scanner laser
+            l0, l1 = projetar(lx + 0.45, z, base), projetar(lx + 0.85, z, base - 0.25)
+            cv2.rectangle(img, ip(l0), ip(l1), (30, 30, 30), -1)
+            cv2.rectangle(img, ip(l0), ip(l1), COR_LASER, 2)
+        # câmera de contexto no topo do poste do acostamento
+        k0, k1 = projetar(POSTE_X[1] - 0.9, z, BEAM_H + 0.9), projetar(POSTE_X[1] - 0.2, z, BEAM_H + 0.5)
+        cv2.rectangle(img, ip(k0), ip(k1), (40, 40, 45), -1)
+        cv2.rectangle(img, ip(k0), ip(k1), COR_CTX, 2)
+        mascara = img.any(axis=2)
+        return img, mascara
+
+    def posicoes_sensores(self) -> dict:
+        """Pixel de cada sensor (para rótulos e luzes de atividade)."""
+        z, base = Z_GANTRY, BEAM_H
+        pos = {}
+        for i, lx in enumerate(LANES_X):
+            pos[("anpr", i)] = ip(projetar(lx - 0.7, z, base - 0.18))
+            pos[("rfid", i)] = ip(projetar(lx, z, base - 0.27))
+            pos[("laser", i)] = ip(projetar(lx + 0.65, z, base - 0.12))
+        pos[("ctx", 0)] = ip(projetar(POSTE_X[1] - 0.55, z, BEAM_H + 0.7))
+        return pos
+
+    def desenhar_atividade(self, img):
+        """Acende o sensor que acabou de ler: flash IR, antena e laser."""
+        pos = self.posicoes_sensores()
+        for (sensor, faixa), t0 in self.atividade.items():
+            dt = self.t - t0
+            if dt < 0 or dt > 0.45:
+                continue
+            forca = 1 - dt / 0.45
+            x, y = pos[(sensor, faixa)]
+            cor = {"anpr": (255, 255, 255), "rfid": (80, 230, 80), "laser": COR_LASER}[sensor]
+            sobre = img.copy()
+            cv2.circle(sobre, (x, y), int(8 + 14 * forca), cor, -1, cv2.LINE_AA)
+            cv2.addWeighted(sobre, 0.6 * forca, img, 1 - 0.6 * forca, 0, img)
+            if sensor == "laser":
+                lx = LANES_X[faixa]
+                a, b = projetar(lx - 1.8, Z_GANTRY), projetar(lx + 1.8, Z_GANTRY)
+                leque = img.copy()
+                cv2.fillPoly(leque, [np.array([(x, y), ip(a), ip(b)], np.int32)], COR_LASER)
+                cv2.addWeighted(leque, 0.35 * forca, img, 1 - 0.35 * forca, 0, img)
 
     def desenhar_veiculo(self, img, v: Veiculo):
         x1, y1, x2, y2 = v.caixa()
@@ -382,12 +500,135 @@ class Simulador:
         a = np.clip(a, 0, 255).astype(np.uint8)
         return cv2.cvtColor(a, cv2.COLOR_GRAY2BGR)
 
+    def rotulos_sensores(self, d: ImageDraw.ImageDraw):
+        """Etiquetas numeradas nos sensores do pórtico + legenda."""
+        pos = self.posicoes_sensores()
+        marcas = [("anpr", "1", COR_ANPR), ("rfid", "2", COR_RFID), ("laser", "3", COR_LASER)]
+        for faixa in (0, 1):
+            for k, num, cor in marcas:
+                x, y = pos[(k, faixa)]
+                self._etiqueta(d, x, y - 26 - (int(num) - 1) % 2 * 0, num, cor)
+        x, y = pos[("ctx", 0)]
+        self._etiqueta(d, x, y - 24, "4", COR_CTX)
+        # legenda
+        lx, ly = 12, 8
+        d.rounded_rectangle((lx - 4, ly - 4, lx + 600, ly + 40), 6, fill=(20, 24, 28))
+        legenda = [("1", "Câmera ANPR + flash IR", COR_ANPR), ("2", "Antena RFID", COR_RFID),
+                   ("3", "Laser 3D (eixos)", COR_LASER), ("4", "Câmera de contexto", COR_CTX)]
+        cx = lx
+        for num, nome, cor in legenda:
+            self._etiqueta(d, cx + 8, ly + 1, num, cor, centro=False)
+            d.text((cx + 22, ly + 1), nome, font=F_SM, fill=(235, 235, 235))
+            cx += 22 + int(d.textlength(nome, font=F_SM)) + 16
+        d.text((lx, ly + 20), "Caixa:  verde = pela tag   amarela = pela placa   vermelha = revisão",
+               font=F_SM, fill=(200, 200, 200))
+        # rótulos das linhas no asfalto
+        for z, txt, cor in [(Z_TRIGGER, "disparo da câmera (10 m antes)", COR_ANPR),
+                            (Z_GANTRY, "laser sob o pórtico", COR_LASER)]:
+            x, y = projetar(LANE_W + 0.2, z)
+            rgb = (cor[2], cor[1], cor[0])
+            bb = d.textbbox((x + 6, y - 9), txt, font=F_SM)
+            d.rectangle((bb[0] - 3, bb[1] - 2, bb[2] + 3, bb[3] + 2), fill=(20, 24, 28))
+            d.text((x + 6, y - 9), txt, font=F_SM, fill=rgb)
+        x, y = projetar(-LANE_W - 0.3, (Z_RFID[0] + Z_RFID[1]) / 2)
+        txt = "zona RFID (0-16 m)"
+        bb = d.textbbox((0, 0), txt, font=F_SM)
+        d.rectangle((x - bb[2] - 10, y - 10, x - 2, y + 8), fill=(20, 24, 28))
+        d.text((x - bb[2] - 6, y - 9), txt, font=F_SM, fill=(COR_RFID[2], COR_RFID[1], COR_RFID[0]))
+
+    def textos_vista_lateral(self, d):
+        x0, y0, w, h = 12, SCENE_H + 8, SCENE_W - 24, 132
+        chao = y0 + h - 26
+        d_min, d_max = -60.0, 15.0
+        px = lambda dist: int(x0 + 30 + (dist - d_min) / (d_max - d_min) * (w - 60))
+        d.text((x0 + 8, y0 + 4), "Vista lateral (esquema) · sentido do tráfego →", font=F_BOX,
+               fill=(40, 40, 40))
+        for dist in range(-60, 16, 10):
+            rot = "pórtico" if dist == 0 else f"{dist:+d} m"
+            bb = d.textbbox((0, 0), rot, font=F_SM)
+            d.text((px(dist) - bb[2] // 2, chao + 6), rot, font=F_SM, fill=(90, 90, 90))
+        notas = [(-16, -1, "2 antena RFID: 0-16 m antes", COR_RFID),
+                 (-10, -2, "1 câmera ANPR: placa a 10 m", COR_ANPR),
+                 (0, -3, "3 laser: eixos, sob o pórtico", COR_LASER)]
+        cx = x0 + 8
+        for dist, _, txt, cor in notas:
+            d.text((cx, y0 + 24), "■ " + txt, font=F_SM,
+                   fill=(int(cor[2] * .8), int(cor[1] * .8), int(cor[0] * .8)))
+            cx += int(d.textlength("■ " + txt, font=F_SM)) + 22
+
+    @staticmethod
+    def _etiqueta(d, x, y, num, cor, centro=True):
+        r = 8
+        cx, cy = (x, y) if centro else (x, y + 7)
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(cor[2], cor[1], cor[0]),
+                  outline=(255, 255, 255), width=1)
+        d.text((cx - 4, cy - 8), num, font=F_BOX, fill=(15, 15, 15))
+
+    def desenhar_vista_lateral(self, canvas):
+        """Esquema lateral: onde cada sensor está e que trecho da pista ele cobre."""
+        x0, y0, w, h = 12, SCENE_H + 8, SCENE_W - 24, 132
+        cv2.rectangle(canvas, (x0, y0), (x0 + w, y0 + h), (236, 238, 240), -1)
+        chao = y0 + h - 26
+        # escala: de 60 m antes do pórtico até 15 m depois
+        d_min, d_max = -60.0, 15.0
+        def px(dist):   # dist < 0: antes do pórtico
+            return int(x0 + 30 + (dist - d_min) / (d_max - d_min) * (w - 60))
+        def py(alt):
+            return int(chao - alt * 11)
+        cv2.line(canvas, (x0 + 10, chao), (x0 + w - 10, chao), (90, 90, 95), 2)
+        for dist in range(-60, 16, 10):
+            cv2.line(canvas, (px(dist), chao), (px(dist), chao + 4), (120, 120, 120), 1)
+        # zonas no chão
+        rf0, rf1 = Z_GANTRY - Z_RFID[1], Z_GANTRY - Z_RFID[0]      # -16 .. 0
+        cv2.rectangle(canvas, (px(rf0), chao - 3), (px(rf1), chao + 3), COR_RFID, -1)
+        trig = Z_GANTRY - Z_TRIGGER                                  # -10
+        gx = px(0)
+        topo = py(BEAM_H)
+        sobre = canvas.copy()
+        cv2.fillPoly(sobre, [np.array([(gx, topo + 8), (px(rf0), chao), (px(rf1), chao)])],
+                     COR_RFID)
+        cv2.fillPoly(sobre, [np.array([(gx - 4, topo + 6), (px(trig - 1.5), chao),
+                                       (px(trig + 1.5), chao)])], COR_ANPR)
+        cv2.addWeighted(sobre, 0.25, canvas, 0.75, 0, canvas)
+        cv2.line(canvas, (gx + 3, topo + 6), (gx + 3, chao), COR_LASER, 2)
+        # pórtico
+        cv2.rectangle(canvas, (gx - 3, topo - 6), (gx + 3, chao), (130, 130, 135), -1)
+        cv2.rectangle(canvas, (gx - 10, topo - 8), (gx + 10, topo), (130, 130, 135), -1)
+        cv2.circle(canvas, (gx - 6, topo + 5), 4, COR_ANPR, -1)
+        cv2.circle(canvas, (gx, topo + 8), 4, COR_RFID, -1)
+        cv2.circle(canvas, (gx + 6, topo + 5), 4, COR_LASER, -1)
+        # veículos (vista lateral, faixa 0 em cima da faixa 1 levemente deslocada)
+        for v in self.veiculos:
+            dist = Z_GANTRY - v.z
+            if not (d_min <= dist <= d_max):
+                continue
+            comp = {"carro": 4.5, "suv": 4.8, "caminhao2": 8, "caminhao5": 18, "onibus": 13,
+                    "moto": 2}[v.tipo]
+            alt = v.dims[1]
+            xf = px(dist)
+            xt = px(dist - comp)
+            cor = VERDE if v.decisao == "TAG" or v.tag_lida else (
+                VERMELHO if v.decisao == "REVISAO" else AMARELO)
+            off = 0 if v.faixa == 0 else -3
+            cv2.rectangle(canvas, (xt, py(alt) + off), (xf, chao - 2 + off), v.cor, -1)
+            cv2.rectangle(canvas, (xt, py(alt) + off), (xf, chao - 2 + off), cor, 2)
+
     def render(self, f: int) -> np.ndarray:
         canvas = np.full((H, W, 3), 248, np.uint8)
         cena = np.zeros((SCENE_H, SCENE_W, 3), np.uint8)
         self.desenhar_estrada(cena)
-        for v in sorted(self.veiculos, key=lambda v: -v.z):
-            self.desenhar_veiculo(cena, v)
+        if self.portico is None:
+            self.portico = self._camada_portico()
+        # ordem de pintura: veículos antes do pórtico -> pórtico -> veículos que já passaram
+        ordem = sorted(self.veiculos, key=lambda v: -v.z)
+        for v in ordem:
+            if v.z > Z_GANTRY:
+                self.desenhar_veiculo(cena, v)
+        cena[self.portico[1]] = self.portico[0][self.portico[1]]
+        for v in ordem:
+            if v.z <= Z_GANTRY:
+                self.desenhar_veiculo(cena, v)
+        self.desenhar_atividade(cena)
         limpo = cena.copy()
         ops: list = []
         self.desenhar_anotacoes(cena, ops)
@@ -431,7 +672,7 @@ class Simulador:
             cv2.circle(canvas, tuple(pts[-1]), 4, (110, 80, 40), -1)
 
         # --- linha do tempo de intensidade (rodapé)
-        tx0, ty0, tw, th = 12, 640, SCENE_W - 24, 26
+        tx0, ty0, tw, th = 12, 778, SCENE_W - 24, 26
         cores_int = {"Baixo": (225, 225, 215), "Moderado": (210, 220, 200), "Alto": (180, 200, 240)}
         seg_ini = 0
         blocos = []
@@ -447,6 +688,8 @@ class Simulador:
                       (tx0 + tw, ty0 + th), (236, 236, 236), -1)
         xm = tx0 + int(tw * f / self.n_frames)
         cv2.line(canvas, (xm, ty0 - 4), (xm, ty0 + th + 4), (60, 50, 40), 2)
+
+        self.desenhar_vista_lateral(canvas)
 
         # ---------------------------------------------------- textos (PIL, com acentos)
         pil = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
@@ -468,11 +711,8 @@ class Simulador:
         d.text((W - 70, 166), "120 km/h", font=F_SM, fill=(90, 90, 90))
         d.text((14, SCENE_H - 22), "CENA SINTÉTICA · pórtico BR (2 faixas + acostamento)",
                font=F_SM, fill=(255, 255, 255))
-        # legenda das zonas
-        d.text((14, 8), "■ zona da antena RFID", font=F_SM, fill=(60, 160, 219))
-        d.text((170, 8), "━ linha de disparo ANPR", font=F_SM, fill=(240, 60, 60))
-        d.text((340, 8), "□ verde: tag   □ amarelo: OCR   □ vermelho: revisão", font=F_SM,
-               fill=(255, 255, 255))
+        self.rotulos_sensores(d)
+        self.textos_vista_lateral(d)
 
         intens = self.intensidades[-1]
         d.text((PANEL_X, 190), intens, font=fonte(26, True), fill=(30, 40, 60))
@@ -514,14 +754,29 @@ class Simulador:
         d.text((gx0, gy0 + gh + 4), "0 s", font=F_SM, fill=(110, 110, 110))
         d.text((gx0 + gw - 26, gy0 + gh + 4), f"{self.n_frames // FPS} s", font=F_SM,
                fill=(110, 110, 110))
+        # estado dos sensores
+        d.text((PANEL_X, 712), "Leituras por sensor nesta cena", font=F_SM, fill=(90, 90, 90))
+        itens = [("Câmera ANPR", "anpr", COR_ANPR), ("Antena RFID", "rfid", COR_RFID),
+                 ("Laser 3D", "laser", COR_LASER)]
+        for i, (nome, k, cor) in enumerate(itens):
+            y = 732 + i * 24
+            ativo = any(s == k and 0 <= self.t - t0 < 0.45 for (s, _), t0 in self.atividade.items())
+            rgb = (cor[2], cor[1], cor[0])
+            d.rectangle((PANEL_X, y + 2, PANEL_X + 12, y + 14), fill=rgb if ativo else None,
+                        outline=rgb, width=2)
+            d.text((PANEL_X + 20, y), nome, font=F_MD, fill=(40, 40, 40))
+            d.text((PANEL_X + 160, y), f"{self.contagem_sensor[k]:>3d} leituras", font=F_MONO,
+                   fill=(60, 60, 60))
+            if ativo:
+                d.text((PANEL_X + 270, y), "lendo", font=F_BOX, fill=(30, 150, 60))
         # rodapé
-        d.text((12, 552), "Pipeline:  câmera → detecção → rastreamento → disparo → OCR da placa "
+        d.text((12, 690), "Pipeline:  câmera → detecção → rastreamento → disparo → OCR da placa "
                "→ leitura RFID → fusão → categoria → evento", font=F_MD, fill=(40, 40, 40))
-        d.text((12, 578), "Cada passagem salva ~965 KB de evidência (2 fotos ANPR, recortes, "
+        d.text((12, 714), "Cada passagem salva ~965 KB de evidência (2 fotos ANPR, recortes, "
                "foto de contexto, perfil do laser, JSON) e envia ~2 KB ao backoffice.",
                font=F_SM, fill=(90, 90, 90))
-        d.text((12, 616), "Intensidade de tráfego estimada", font=F_LG, fill=(30, 30, 30))
-        d.text((SCENE_W - 110, 618), f"{t:.1f} / {self.n_frames / FPS:.0f} s", font=F_SM,
+        d.text((12, 750), "Intensidade de tráfego estimada", font=F_LG, fill=(30, 30, 30))
+        d.text((SCENE_W - 110, 752), f"{t:.1f} / {self.n_frames / FPS:.0f} s", font=F_SM,
                fill=(90, 90, 90))
         for a, b, nome in blocos:
             if b - a > 70:
@@ -547,8 +802,9 @@ def main():
     sim.serie_fluxo.clear()
     sim.serie_mb.clear()
     sim.intensidades.clear()
+    sim.contagem_sensor = {k: 0 for k in sim.contagem_sensor}
     for v in sim.veiculos:
-        v.evento_emitido = v.evento_emitido or v.z < Z_RFID[0]
+        v.evento_emitido = v.evento_emitido or v.z < Z_GANTRY
 
     frames, densidade = [], []
     for f in range(sim.n_frames):
@@ -567,7 +823,7 @@ def main():
     destaque = meio + int(np.argmax(densidade[meio:]))
     cv2.imwrite(str(FIG / "simulacao_portico_frame.png"), frames[destaque])
     if not args.sem_gif:
-        gif_frames = [Image.fromarray(cv2.cvtColor(cv2.resize(fr, (800, 450),
+        gif_frames = [Image.fromarray(cv2.cvtColor(cv2.resize(fr, (800, round(800 * H / W)),
                       interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2RGB))
                       for fr in frames[::2]]
         gif_frames[0].save(FIG / "simulacao_portico.gif", save_all=True,
