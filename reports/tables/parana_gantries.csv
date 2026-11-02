@@ -1,0 +1,11 @@
+concessionaire,highway_name,highway,municipality,km,direction,gantries,start_date,status
+EPR Iguaçu,Lote Iguaçu,BR-163,Santa Lúcia,154.0,ambos,1,2026-02-23,ativo
+EPR Iguaçu,Lote Iguaçu,BR-163,Santa Lúcia,156.1,ambos,1,2026-02-23,ativo
+EPR Iguaçu,Lote Iguaçu,PR-182,Ampére,517.4,ambos,1,2026-02-23,ativo
+EPR Iguaçu,Lote Iguaçu,PR-280,Vitorino,234.3,ambos,1,2026-02-23,ativo
+EPR Paraná,Lote 4 - Norte e Noroeste do Paraná,BR-369,Jataizinho,126.0,ambos,2,2026-05-04,ativo
+EPR Paraná,Lote 4 - Norte e Noroeste do Paraná,BR-369,Rolândia / Arapongas,180.2,ambos,2,2026-05-04,ativo
+EPR Paraná,Lote 4 - Norte e Noroeste do Paraná,BR-376,Presidente Castelo Branco / Mandaguaçu,145.8,ambos,2,2026-05-04,ativo
+EPR Paraná,Lote 4 - Norte e Noroeste do Paraná,BR-376,Marialva / Mandaguari,196.0,ambos,2,2026-05-04,ativo
+"PRVias (Motiva Paraná, ex-CCR RodoNorte)",Rodovia do Café,BR-376,Mauá da Serra,294.8,ambos,1,2026-06-01,ativo
+"PRVias (Motiva Paraná, ex-CCR RodoNorte)",Rodovia Celso Garcia Cid,PR-445,Tamarana,2.47,ambos,1,2026-06-01,ativo

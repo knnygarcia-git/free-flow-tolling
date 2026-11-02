@@ -1,0 +1,4 @@
+scenario,aadt_site,veh_peak_hour,veh_min_peak,veh_sec_peak,veh_min_avg,C_evidence_MB_min_peak,D_transaction_KB_min_peak,C_evidence_GB_day_site,B_video_GB_day_site,A_raw_GB_min_site,C_evidence_TB_year_EPR_lot4
+low,8000,593,9.9,0.16,5.6,9.514074074074072,19.753086419753085,7.7063999999999995,432.0,109.35,11.251343999999998
+medium,20000,1481,24.7,0.41,13.9,23.78518518518518,49.38271604938271,19.266,432.0,109.35,28.12836
+high,40000,2963,49.4,0.82,27.8,47.57037037037036,98.76543209876542,38.532,432.0,109.35,56.25672

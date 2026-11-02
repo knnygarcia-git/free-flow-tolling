@@ -1,0 +1,51 @@
+{
+  "auc": 0.9966001347574444,
+  "brier": 0.0021532930880454565,
+  "best_threshold": 0.9789899749373434,
+  "theoretical_threshold": 0.98,
+  "review_cost": 0.6,
+  "error_cost": 30.0,
+  "comparison": [
+    {
+      "strategy": "Current rule (tag or OCR >= 90%)",
+      "auto_billed_pct": 98.759,
+      "review_pct": 1.241,
+      "wrong_charges": 422,
+      "errors_per_10k": 121.81,
+      "auto_accuracy_pct": 98.767,
+      "cost_R$": 12918.0,
+      "cost_per_10k_R$": 3728.784
+    },
+    {
+      "strategy": "Rule with the best OCR threshold (0.999)",
+      "auto_billed_pct": 92.284,
+      "review_pct": 7.716,
+      "wrong_charges": 188,
+      "errors_per_10k": 54.266,
+      "auto_accuracy_pct": 99.412,
+      "cost_R$": 7243.8,
+      "cost_per_10k_R$": 2090.925
+    },
+    {
+      "strategy": "Model, best threshold (0.979)",
+      "auto_billed_pct": 95.705,
+      "review_pct": 4.295,
+      "wrong_charges": 17,
+      "errors_per_10k": 4.907,
+      "auto_accuracy_pct": 99.949,
+      "cost_R$": 1402.8,
+      "cost_per_10k_R$": 404.919
+    }
+  ],
+  "errors_avoided": {
+    "wrong OCR with high confidence": 323,
+    "tag on another vehicle": 85
+  },
+  "storage": {
+    "passes_test_day": 34644,
+    "gb_day_keep_everything": 33.44,
+    "gb_day_risk_based_policy": 13.66,
+    "reduction_pct": 59.2,
+    "full_packages_pct": 38.6
+  }
+}

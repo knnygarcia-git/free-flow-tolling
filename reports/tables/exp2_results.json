@@ -1,0 +1,60 @@
+{
+  "test_passes": 13182,
+  "methods": [
+    {
+      "method": "A. best frame",
+      "plate_accuracy_pct": 95.441,
+      "errors_per_10k": 455.925,
+      "char_accuracy_pct": 98.978,
+      "accuracy_night_rain_pct": 94.584,
+      "accuracy_dirty_plate_pct": 74.205,
+      "error_reduction_pct": 0.0
+    },
+    {
+      "method": "B. + Mercosur rule",
+      "plate_accuracy_pct": 96.647,
+      "errors_per_10k": 335.306,
+      "char_accuracy_pct": 99.296,
+      "accuracy_night_rain_pct": 96.007,
+      "accuracy_dirty_plate_pct": 81.427,
+      "error_reduction_pct": 26.456
+    },
+    {
+      "method": "C. vote + rule",
+      "plate_accuracy_pct": 96.791,
+      "errors_per_10k": 320.892,
+      "char_accuracy_pct": 99.317,
+      "accuracy_night_rain_pct": 96.565,
+      "accuracy_dirty_plate_pct": 81.427,
+      "error_reduction_pct": 29.617
+    },
+    {
+      "method": "D. confusion model",
+      "plate_accuracy_pct": 96.708,
+      "errors_per_10k": 329.237,
+      "char_accuracy_pct": 99.329,
+      "accuracy_night_rain_pct": 96.518,
+      "accuracy_dirty_plate_pct": 80.911,
+      "error_reduction_pct": 27.787
+    }
+  ],
+  "top_confusions": {
+    "5 read as S": 2278,
+    "7 read as 9": 2235,
+    "9 read as 7": 2207,
+    "4 read as A": 2200,
+    "2 read as Z": 2158,
+    "F read as E": 1282,
+    "R read as P": 1215,
+    "Z read as 2": 1213,
+    "E read as F": 1194,
+    "P read as R": 1183
+  },
+  "best_method": "C. vote + rule",
+  "remaining_errors_by_plate_state_pct": {
+    "dirty": 51.1,
+    "damaged": 19.1,
+    "ok": 18.9,
+    "covered": 10.9
+  }
+}
