@@ -18,6 +18,7 @@ pipeline segue a de um pórtico real (ver [`docs/como_funciona.md`](docs/como_fu
 1. Onde estão e quantos são os pórticos Free Flow no Brasil e no Paraná?
 2. **Quantos dados um pórtico recebe por minuto?** Do sensor bruto ao registro de cobrança.
 3. Como os sensores leem placas e tags a 100 km/h?
+4. Como machine learning melhora a acurácia e reduz o custo e o volume de dados?
 
 ## Principais resultados
 
@@ -69,6 +70,92 @@ para algumas dezenas de MB de evidências e algumas dezenas de KB de transaçõe
 
 Explicação completa, com diagrama e tabela de decisão: **[`docs/como_funciona.md`](docs/como_funciona.md)**.
 
+## Machine learning: mais acurácia, menos custo
+
+Três experimentos sobre uma base sintética de **104 mil passagens** (3 dias, 4 pórticos, com
+noite, chuva, placas sujas, tags em outro veículo e duas falhas de sensor no último dia). O
+gerador conhece a placa verdadeira; na operação real esse rótulo vem da revisão humana e das
+contestações. Todos usam **validação temporal**: treinam nos dias 1 e 2 e testam no dia 3.
+
+> Os números abaixo medem o método sobre dados simulados. Eles mostram a ordem de grandeza do
+> ganho, não o desempenho de um pórtico real. Os custos (R$ 0,60 por revisão, R$ 30 por cobrança
+> errada) são hipóteses editáveis.
+
+### 1. Fusão das leituras com limiar por custo ([`exp1_fusao_limiar.py`](src/ml/exp1_fusao_limiar.py))
+
+Um gradient boosting calibrado estima a chance de a placa cobrada estar certa, usando 18 sinais:
+confiança das duas câmeras, concordância entre quadros, distância entre a placa da tag e a lida
+pelo OCR, se a placa existe no cadastro, se a categoria do cadastro bate com a do laser, chuva,
+noite etc. O limiar de aceitação automática é o que minimiza o custo total.
+
+| Dia de teste (34.644 passagens) | Cobrança automática | Revisão humana | Cobranças erradas | Custo por 10 mil |
+|---|---:|---:|---:|---:|
+| Regra atual (tag ou OCR ≥ 90%) | 98,8% | 1,2% | 422 | R$ 3.729 |
+| Regra com o melhor limiar de OCR | 92,3% | 7,7% | 188 | R$ 2.091 |
+| **Modelo, limiar ótimo (0,979)** | **95,7%** | **4,3%** | **17** | **R$ 405** |
+
+O modelo corta **96% das cobranças erradas** e **89% do custo**. Dos erros que a regra deixava
+passar, 323 eram OCR errado com confiança alta e 85 eram tag instalada em outro veículo. A
+confiança crua do OCR é superconfiante; a probabilidade do modelo é calibrada (figura 07).
+
+| | |
+|---|---|
+| ![](reports/figures/06_custo_por_limiar.png) | ![](reports/figures/08_importancia_variaveis.png) |
+
+### 2. Correção de caracteres pelo formato Mercosul ([`exp2_correcao_mercosul.py`](src/ml/exp2_correcao_mercosul.py))
+
+Só passagens sem tag (13.182 no dia de teste), que dependem 100% do OCR.
+
+| Método | Acurácia da placa | Erros por 10 mil | Redução |
+|---|---:|---:|---:|
+| A. Melhor quadro | 95,4% | 456 | – |
+| B. + regra Mercosul (dígito em posição de letra vira letra) | 96,6% | 335 | −26% |
+| **C. Votação ponderada entre quadros + regra** | **96,8%** | **321** | **−30%** |
+| D. Modelo de confusão aprendido | 96,7% | 329 | −28% |
+
+A votação com a regra resolve os erros aleatórios. **81% dos erros que sobram estão em placas
+sujas, danificadas ou tampadas**, que são lidas erradas do mesmo jeito em todos os quadros.
+Esses casos não se resolvem com mais quadros: vão para revisão humana, e é o modelo do
+experimento 1 que os separa.
+
+| | |
+|---|---|
+| ![](reports/figures/09_correcao_mercosul.png) | ![](reports/figures/10_confusoes_ocr.png) |
+
+### 3. Alerta de sensor degradado ([`exp3_saude_sensores.py`](src/ml/exp3_saude_sensores.py))
+
+O indicador é a fração de leituras confiáveis por faixa, a cada 10 minutos. Ele também cai com
+chuva e à noite, então um modelo aprende a taxa esperada para as condições do momento e um
+CUSUM acumula os desvios.
+
+| | Alarme ingênuo (taxa < 85%) | Modelo + CUSUM |
+|---|---:|---:|
+| Janelas com alarme falso (3 dias, 8 faixas) | 172 | **0** |
+| Iluminador IR queimado (abrupto, à noite) | detecta, mas já disparava antes | **1ª janela de 10 min** |
+| Lente suja (gradual) | 20 min, misturado a alarmes falsos | **30 min** |
+
+O alarme ingênuo é mais rápido na lente suja só porque dispara o tempo todo. Com 172 alarmes
+falsos, ninguém confia nele.
+
+![](reports/figures/11_saude_sensores.png)
+
+## Como otimizar os dados
+
+Resumo das práticas, do sensor ao armazenamento. Detalhes, regras de validação e indicadores em
+**[`docs/otimizacao_dados.md`](docs/otimizacao_dados.md)**.
+
+| Etapa | O que fazer | Ganho medido ou esperado |
+|---|---|---|
+| Captura | Processar na borda e guardar só o evento: de ~55 GB/min de imagem bruta para ~2 KB por passagem | ordens de grandeza menos tráfego de rede |
+| Leitura | Votação entre quadros + regra Mercosul | −30% de placas erradas (exp. 2) |
+| Decisão | Probabilidade calibrada + limiar por custo, em vez de "confiança ≥ 90%" | −96% de cobranças erradas, −89% de custo (exp. 1) |
+| Validação | Regras automáticas: formato, cadastro, categoria tag × laser, duplicidade, horário | pega fraude de tag e leitura impossível antes da cobrança |
+| Armazenamento | Pacote completo de fotos só quando a prova pode ser necessária; versão reduzida para tag confirmada | −59% de GB por dia |
+| Operação | Monitorar a saúde de cada câmera com esperado × observado | falha detectada em 10–30 min, sem alarmes falsos (exp. 3) |
+| Melhoria contínua | Usar a revisão humana como rótulo e revisar primeiro os casos incertos | o modelo melhora com o uso |
+
+![](reports/figures/12_politica_armazenamento.png)
+
 ## Estrutura
 
 ```
@@ -79,7 +166,12 @@ src/volume_dados.py      modelo de volume de dados em 4 camadas -> figuras 04-05
 src/simulador_portico.py simulação visual do pórtico -> MP4, GIF, PNG e eventos_simulados.csv
 reports/figures/         gráficos e vídeo
 reports/tabelas/         tabelas geradas
+src/ml/gerar_eventos.py  base sintética de passagens para ML (data/sintetico/, fora do git)
+src/ml/exp1_*.py         fusão das leituras + limiar por custo + política de armazenamento
+src/ml/exp2_*.py         correção de caracteres Mercosul
+src/ml/exp3_*.py         saúde dos sensores (esperado × observado + CUSUM)
 docs/como_funciona.md    como tag, placa e laser são lidos
+docs/otimizacao_dados.md como otimizar os dados, do sensor ao armazenamento
 ```
 
 ## Como rodar
@@ -89,6 +181,12 @@ pip install -r requirements.txt
 python src/analise_porticos.py
 python src/volume_dados.py
 python src/simulador_portico.py --segundos 30 --seed 42
+
+# machine learning (cerca de 1 minuto no total)
+python src/ml/gerar_eventos.py
+python src/ml/exp1_fusao_limiar.py
+python src/ml/exp2_correcao_mercosul.py
+python src/ml/exp3_saude_sensores.py
 ```
 
 ## Limitações e próximos passos
@@ -96,7 +194,10 @@ python src/simulador_portico.py --segundos 30 --seed 42
 * Os VDMs são cenários; o próximo passo é calibrar com o CSV diário da ANTT.
 * A simulação usa uma cena gerada por código; um passo seguinte seria trocar por vídeo real de
   rodovia com um detector treinado (YOLOv8) e um OCR de placas (ex.: dataset brasileiro RodoSol-ALPR).
-* Ideias de modelos: previsão de demanda por pórtico, probabilidade de inadimplência (sem tag),
+* Os experimentos de ML usam dados sintéticos. Com dados reais, o rótulo viria da revisão humana,
+  e seria preciso cuidar do viés de só conhecer a verdade dos casos que foram revisados.
+* Encadear os experimentos: usar a placa corrigida do experimento 2 como entrada do experimento 1.
+* Outras ideias: previsão de demanda por pórtico, probabilidade de inadimplência (sem tag),
   detecção de placa clonada (mesma placa em pórticos distantes em tempo impossível).
 
 ## Fontes

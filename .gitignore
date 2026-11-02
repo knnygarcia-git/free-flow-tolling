@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 data/raw/antt/*.csv
 .ipynb_checkpoints/
+data/sintetico/

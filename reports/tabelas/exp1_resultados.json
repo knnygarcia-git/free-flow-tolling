@@ -1,0 +1,51 @@
+{
+  "auc": 0.9966001347574444,
+  "brier": 0.0021532930880454565,
+  "limiar_otimo": 0.9789899749373434,
+  "limiar_teorico": 0.98,
+  "custo_revisao": 0.6,
+  "custo_erro": 30.0,
+  "comparacao": [
+    {
+      "estrategia": "Regra atual (tag ou OCR >= 90%)",
+      "cobranca_automatica_pct": 98.759,
+      "revisao_pct": 1.241,
+      "cobrancas_erradas": 422,
+      "erros_por_10k": 121.81,
+      "acuracia_automatica_pct": 98.767,
+      "custo_R$": 12918.0,
+      "custo_por_10k_R$": 3728.784
+    },
+    {
+      "estrategia": "Regra com melhor limiar de OCR (0.999)",
+      "cobranca_automatica_pct": 92.284,
+      "revisao_pct": 7.716,
+      "cobrancas_erradas": 188,
+      "erros_por_10k": 54.266,
+      "acuracia_automatica_pct": 99.412,
+      "custo_R$": 7243.8,
+      "custo_por_10k_R$": 2090.925
+    },
+    {
+      "estrategia": "Modelo, limiar ótimo (0.979)",
+      "cobranca_automatica_pct": 95.705,
+      "revisao_pct": 4.295,
+      "cobrancas_erradas": 17,
+      "erros_por_10k": 4.907,
+      "acuracia_automatica_pct": 99.949,
+      "custo_R$": 1402.8,
+      "custo_por_10k_R$": 404.919
+    }
+  ],
+  "erros_evitados": {
+    "OCR errado com confiança alta": 323,
+    "tag em outro veículo": 85
+  },
+  "armazenamento": {
+    "passagens_dia_teste": 34644,
+    "gb_dia_guardando_tudo": 33.44,
+    "gb_dia_politica_por_risco": 13.66,
+    "reducao_pct": 59.2,
+    "pacotes_completos_pct": 38.6
+  }
+}
