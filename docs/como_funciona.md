@@ -1,98 +1,106 @@
-# Como um pórtico Free Flow identifica e cobra um veículo
+# Como o pórtico descobre quem passou e quanto cobrar
 
-O pórtico é uma estrutura metálica sobre a pista. Nela ficam três famílias de sensores, cada uma
-com uma tarefa: **identificar** o veículo (tag ou placa), **classificar** (quantos eixos, qual
-categoria) e **registrar a evidência** (fotos, horário, posição). Tudo acontece com o carro a
-80–120 km/h, sem cancela nem redução de velocidade.
+O pórtico é aquela estrutura de metal que atravessa a pista. Pendurados nele, sobre cada faixa,
+ficam alguns aparelhos. Cada um responde a uma pergunta diferente: quem é esse carro (tag ou
+placa), que tipo de veículo ele é (quantos eixos) e como provar que ele passou (fotos e horário).
+Tudo isso com o carro a 80 ou 120 km/h, sem cancela e sem frear.
 
 ```
-             ┌──────────────────────── PÓRTICO ────────────────────────┐
-             │  [antena RFID]  [câmera ANPR + IR]  [laser 3D]  [contexto]│   ← um conjunto por faixa
-             └──────────────────────────────────────────────────────────┘
+             ┌──────────────────────── PÓRTICO ─────────────────────────┐
+             │  [antena]   [câmera da placa + flash IR]   [laser]   [câmera geral]  │   um conjunto por faixa
+             └───────────────────────────────────────────────────────────┘
                     │                 │                 │
-  0–16 m antes ────┼── zona RFID ────┼─ disparo ANPR ──┼──── sob o pórtico ──→ sentido do tráfego
-                    │                 │  (~10 m antes)  │
+  0 a 16 m antes ───┼── área da antena┼─ foto da placa ─┼──── embaixo do pórtico ──→ sentido do tráfego
+                    │                 │  (10 m antes)   │
                     ▼                 ▼                 ▼
-              lê a tag (ms)     foto da placa     perfil, eixos, altura
+              lê a tag          fotografa a placa   mede o veículo e conta os eixos
                     └────────┬────────┴────────┬────────┘
                              ▼                 ▼
-                    COMPUTADOR DE BORDA (no pórtico): fusão tag × placa × categoria
+                    computador no próprio pórtico junta as três leituras
                              ▼
-                    pacote de evidência (~1 MB) + transação (~2 KB) → backoffice da concessionária
+                    provas (~1 MB) + registro de cobrança (~2 KB) → sistema da concessionária
                              ▼
-                 com tag: cobra a operadora (Sem Parar, ConectCar, Veloe...)
-                 sem tag: cobrança pela placa, prazo típico de 30 dias; não pagar = infração (art. 209-A do CTB)
+                 com tag: a cobrança vai para a empresa da tag (Sem Parar, ConectCar, Veloe...)
+                 sem tag: cobrança pela placa, 30 dias para pagar; quem não paga leva multa (art. 209-A do CTB)
 ```
 
-## 1. Leitura de tag (RFID UHF)
+## A tag
 
-* A tag é um adesivo no para-brisa com um chip e uma antena impressa. **Não tem bateria.**
-* A antena do pórtico emite ondas de rádio na faixa de **UHF (902–928 MHz no Brasil)**. A tag
-  usa a própria energia dessa onda para "acordar" e responde modulando o sinal refletido
-  (*backscatter*), no protocolo **ISO/IEC 18000-63 (EPC Gen2)**, o mesmo das etiquetas de logística.
-* A resposta traz o identificador único do chip (TID/EPC). A leitura leva milissegundos e é
-  repetida várias vezes enquanto o carro cruza a zona da antena, que tem alguns metros de comprimento.
-  O sistema guarda também a força do sinal (RSSI), usada para saber **em qual faixa** a tag estava.
-* A interoperabilidade (qualquer tag autorizada funciona em qualquer pórtico federal) vem da
-  Resolução ANTT nº 4.281/2014. Com tag, o motorista recebe descontos (DBT/DUF) e a cobrança vai
-  para a fatura.
+A tag é aquele adesivo no para-brisa. Dentro dele há um chip e uma antena impressa, e nada de
+bateria.
 
-## 2. Leitura de placa (ANPR/OCR)
+A antena do pórtico emite ondas de rádio (na faixa de 902 a 928 MHz, a mesma das etiquetas
+antifurto de loja). A própria onda dá energia ao chip, que "acorda" e responde refletindo o sinal
+com o seu código. O padrão técnico tem nome, ISO/IEC 18000-63, e é o mesmo usado em logística.
 
-ANPR (*Automatic Number Plate Recognition*) é a mesma tarefa de visão computacional do vídeo dos
-peixes, com etapas parecidas: detectar, rastrear, extrair a informação.
+A leitura leva milésimos de segundo e se repete várias vezes enquanto o carro atravessa a área
+da antena. O sistema também anota a força do sinal, que ajuda a saber em qual faixa o carro
+estava.
 
-1. **Captura.** Câmeras monocromáticas com obturador global (*global shutter*) e iluminador
-   **infravermelho** pulsado em sincronia com a exposição. A exposição é curtíssima (dezenas a
-   centenas de microssegundos), o que congela um carro a 120 km/h. O infravermelho funciona de
-   dia e de noite, ignora farol e sol de frente e destaca a película retrorrefletiva da placa.
-   Normalmente há uma câmera para a placa **dianteira** e outra para a **traseira** em cada faixa.
-2. **Disparo.** Um laser, radar ou o próprio vídeo detecta o veículo e escolhe os melhores quadros
-   quando ele cruza a linha de disparo.
-3. **Detecção da placa.** Uma rede neural (do tipo YOLO/SSD) localiza o retângulo da placa no quadro.
-4. **Retificação.** O recorte é corrigido em perspectiva e contraste.
-5. **OCR.** Outra rede (CRNN ou transformer) lê os 7 caracteres. O formato Mercosul (`LLLNLNN`,
-   ex.: `ABC1D23`) serve de regra de validação: um `0` na terceira posição tem de ser `O`.
-6. **Confiança e votação.** Cada leitura tem uma confiança. Leituras de vários quadros e das duas
-   câmeras (frente e traseira) são combinadas. Abaixo de um limiar, a imagem vai para
-   **revisão humana**.
+Qualquer tag autorizada funciona em qualquer pórtico de rodovia federal, por causa de uma regra
+da ANTT de 2014 (Resolução 4.281). Quem usa tag também ganha desconto.
 
-Erros clássicos de OCR são as confusões `O↔0`, `B↔8`, `I↔1`, `S↔5` e `Z↔2`, além de placa suja, amassada, tampada ou com
-reboque. Quando o veículo tem tag, a placa vinculada à tag no cadastro da operadora serve de
-**conferência**: se a tag diz `ABC1D23` e o OCR leu `ABC1023`, prevalece a tag; se as duas
-divergem muito, pode ser tag transferida de carro ou placa clonada, e o caso vai para auditoria.
+## A placa
 
-## 3. Classificação (categoria da tarifa)
+Ler placa por câmera tem nome técnico, ANPR, e é o mesmo tipo de problema do vídeo dos peixes:
+achar o objeto na imagem, acompanhar enquanto ele se move e extrair uma informação dele.
 
-* **Scanners laser (LiDAR)** montados sobre cada faixa varrem o veículo e montam um perfil 3D:
-  comprimento, largura, altura e número de eixos.
-* Com isso o sistema define a categoria ANTT (ex.: Cat 1 = automóvel de 2 eixos; caminhões e
-  ônibus pagam por eixo; eixo suspenso não é cobrado).
-* A categoria declarada no cadastro da tag é comparada com a medida, o que pega, por exemplo,
-  um caminhão usando a tag de um carro.
+1. A foto. As câmeras são em preto e branco e têm um flash infravermelho que pisca junto com o
+   disparo. A exposição dura milionésimos de segundo, o suficiente para congelar um carro a
+   120 km/h. O infravermelho funciona de dia e de noite, não se atrapalha com farol nem com sol
+   de frente e faz a película da placa brilhar. Em geral há uma câmera para a placa da frente e
+   outra para a de trás, em cada faixa.
+2. O momento certo. O próprio vídeo, um laser ou um radar percebe o carro chegando e escolhe as
+   melhores fotos quando ele cruza uma linha imaginária, uns 10 metros antes do pórtico.
+3. Achar a placa. Um programa de visão computacional (do tipo YOLO) desenha um retângulo em volta
+   da placa.
+4. Endireitar. O recorte é corrigido para não ficar torto nem escuro.
+5. Ler. Outro programa lê as sete letras e números. O formato Mercosul ajuda a conferir: em
+   `ABC1D23`, a terceira posição é sempre letra, então um zero ali só pode ser a letra O.
+6. Decidir. Cada leitura vem com um grau de certeza. As leituras das várias fotos, da frente e
+   de trás, são combinadas. Se a certeza ficar baixa, uma pessoa olha a foto.
 
-## 4. Fusão e evento
+As trocas mais comuns são O com 0, B com 8, I com 1, S com 5 e Z com 2. Placa suja, amassada,
+tampada ou escondida por reboque também atrapalha. Quando o carro tem tag, a placa cadastrada
+junto com a tag serve de conferência. Se a tag diz `ABC1D23` e a câmera leu `ABC1023`, vale a
+tag. Se as duas não têm nada a ver uma com a outra, pode ser tag colada no carro errado ou placa
+clonada, e o caso vai para investigação.
 
-O computador de borda junta as três leituras pelo **horário e pela faixa** e decide:
+## O tipo de veículo
 
-| Situação | Decisão |
+Um laser sobre cada faixa varre o veículo e monta um desenho em 3D dele: comprimento, largura,
+altura e quantos eixos tem. Com isso o sistema sabe a categoria da tarifa. Carro de passeio paga
+uma coisa, caminhão e ônibus pagam por eixo, e eixo levantado não conta.
+
+A categoria cadastrada na tag é comparada com a que o laser mediu. É assim que se pega, por
+exemplo, um caminhão usando a tag de um carro.
+
+## A decisão
+
+O computador do pórtico junta as três leituras pelo horário e pela faixa:
+
+| O que aconteceu | O que o sistema faz |
 |---|---|
-| Tag lida e válida | cobra pela tag; placa = conferência |
-| Sem tag, OCR com confiança ≥ limiar | cobra pela placa |
-| Sem tag, OCR com confiança baixa | revisão manual das imagens |
-| Tag e placa divergentes | auditoria (fraude, tag em outro veículo) |
+| Leu a tag e ela é válida | cobra pela tag e usa a placa para conferir |
+| Sem tag, placa lida com segurança | cobra pela placa |
+| Sem tag, leitura duvidosa | uma pessoa confere as fotos |
+| Tag e placa não batem | investigação (pode ser fraude) |
 
-O resultado é um **evento de passagem**: um registro pequeno (~2 KB) com pórtico, faixa, data e
-hora, identificação, categoria e confiança, mais um **pacote de evidência** (~1 MB) com as fotos,
-que fica guardado para contestações. Quanto isso dá por minuto está em
-[`src/volume_dados.py`](../src/volume_dados.py) e no README.
+O resultado de cada passagem é um registro pequeno, de uns 2 KB, com pórtico, faixa, data, hora,
+placa ou tag, categoria e grau de certeza. Junto vai um pacote de provas de cerca de 1 MB, com as
+fotos, que fica guardado caso alguém conteste a cobrança. A conta de quanto isso dá por minuto
+está em [`src/volume_dados.py`](../src/volume_dados.py) e no README.
 
-## 5. Onde entra a ciência de dados
+## Onde entra a ciência de dados
 
-* **Engenharia de dados:** milhões de eventos por mês, streaming da borda para a nuvem, deduplicação
-  (mesmo carro lido por duas câmeras), particionamento por pórtico e data.
-* **Qualidade de OCR:** taxa de leitura, matriz de confusão por caractere, impacto de chuva e da noite.
-* **Evasão e inadimplência:** modelos para prever quem não vai pagar no prazo e priorizar a cobrança.
-* **Fraude:** divergência tag × placa × categoria; placas clonadas (mesma placa em dois pórticos
-  distantes em tempo impossível).
-* **Tráfego:** curvas horárias, sazonalidade e previsão de demanda por pórtico.
+São milhões de passagens por mês saindo dos pórticos para a nuvem. Alguém precisa juntar as
+leituras repetidas do mesmo carro e organizar tudo por pórtico e por data.
+
+Dá para medir quanto a câmera acerta, quais letras ela mais confunde e quanto a chuva e a noite
+pioram a leitura.
+
+Dá para prever quem não vai pagar no prazo e cobrar antes, achar fraude (tag, placa e categoria
+que não batem; a mesma placa em dois pórticos distantes num intervalo impossível) e prever o
+movimento de cada pórtico por hora e por época do ano.
+
+Três dessas ideias estão testadas na pasta [`src/ml/`](../src/ml/) e explicadas no README.

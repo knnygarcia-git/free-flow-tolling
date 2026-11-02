@@ -1,177 +1,197 @@
-# Free Flow: quanto dado um pedágio sem cancela gera, e como ele "enxerga" os veículos
+# Pedágio sem cancela: o que acontece quando você passa pelo pórtico
 
-Projeto de análise de dados e visão computacional sobre o **pedágio Free Flow** no Brasil, com
-foco nos pórticos da **EPR Paraná** (Lote 4: BR-369 e BR-376), que começaram a cobrar em 4 de maio de 2026.
+Você passa a 100 km/h por baixo de uma estrutura de metal, não freia, não abre o vidro, e dias
+depois a cobrança aparece. Eu queria entender o que acontece nesse meio segundo: quem lê a
+placa, quem lê a tag, quantos dados isso gera e onde dá para errar.
+
+O ponto de partida foram os pórticos da EPR Paraná na BR-369 e na BR-376, que começaram a
+cobrar em 4 de maio de 2026.
 
 ![Simulação do pórtico](reports/figures/simulacao_portico.gif)
 
-*Simulação: o pórtico aparece na cena com os sensores de cada faixa (① câmera ANPR com flash
-infravermelho, ② antena RFID, ③ laser 3D, ④ câmera de contexto) e a área que cada um cobre: a
-antena lê de 0 a 16 m antes do pórtico, a câmera fotografa a placa a 10 m e o laser mede os eixos
-exatamente sob a viga. Uma vista lateral embaixo mostra as mesmas distâncias. Também há
-detecção e rastreamento de veículos, OCR da placa, leitura de tag RFID,
-classificação por eixos e geração de dados em tempo real. **A cena é sintética**; a lógica do
-pipeline segue a de um pórtico real (ver [`docs/como_funciona.md`](docs/como_funciona.md)).*
+*A cena acima é gerada por código, não é vídeo real. Os números no pórtico mostram onde fica
+cada sensor: (1) a câmera que fotografa a placa, (2) a antena que lê a tag, (3) o laser que
+conta os eixos e (4) a câmera que tira a foto geral. A faixa de baixo mostra a mesma coisa de
+lado, com as distâncias. A explicação completa está em [`docs/como_funciona.md`](docs/como_funciona.md).*
 
-## Perguntas
+## O que eu quis responder
 
-1. Onde estão e quantos são os pórticos Free Flow no Brasil e no Paraná?
-2. **Quantos dados um pórtico recebe por minuto?** Do sensor bruto ao registro de cobrança.
-3. Como os sensores leem placas e tags a 100 km/h?
-4. Como machine learning melhora a acurácia e reduz o custo e o volume de dados?
+1. Quantos pórticos desse tipo existem no Brasil e no Paraná?
+2. Quantos dados um pórtico recebe por minuto?
+3. Como uma câmera lê uma placa a 100 km/h, e como a antena lê a tag?
+4. Dá para usar machine learning para errar menos e gastar menos?
 
-## Principais resultados
+## Quantos pórticos existem
 
-**Cadastro (dados reais, base aberta CC BY 4.0, atualizada em 26/08/2026)**
+Esta parte usa dados reais: um cadastro aberto (licença CC BY 4.0, atualizado em 26/08/2026)
+que junta informações da ANTT e das concessionárias.
 
-* 69 locais e **90 pórticos** cadastrados em 8 UFs, de 17 concessionárias; 61 locais já cobram.
-* **Paraná: 14 pórticos em 10 locais**, sendo 12 do grupo EPR (8 da EPR Paraná e 4 da EPR Iguaçu).
-* A EPR Paraná usa **um pórtico por sentido** em cada um dos 4 locais do Lote 4.
+Hoje são 90 pórticos em 8 estados. O Paraná tem 14, e 8 deles são da EPR Paraná, um em cada
+sentido da pista em quatro pontos: Jataizinho e Arapongas, na BR-369, e Presidente Castelo
+Branco e Mandaguari, na BR-376.
 
 | | |
 |---|---|
 | ![](reports/figures/01_porticos_por_uf.png) | ![](reports/figures/03_porticos_parana.png) |
 
-**Volume de dados (modelo paramétrico, cenários de tráfego)**
+## Quantos dados um pórtico gera
 
-Cada passagem gera um **pacote de evidência de cerca de 965 KB** (2 fotos ANPR, recortes da placa, foto de
-contexto, perfil do laser e metadados) e uma **transação de cerca de 2 KB** para o backoffice.
+Cada carro que passa deixa para trás cerca de 1 MB de provas (duas fotos da placa, uma foto
+geral, recortes da placa, o perfil medido pelo laser e um registro com os dados da leitura). Para
+o sistema de cobrança vai bem menos, uns 2 KB.
 
-| Cenário (VDM por local, 2 sentidos) | Veículos/min no pico | Evidências no pico | Evidências por dia | Rede EPR Lote 4 por ano |
+Não consegui acessar a contagem oficial de veículos de cada pórtico, então trabalhei com três
+cenários de movimento. Eles são suposições minhas, não medições:
+
+| Movimento (veículos por dia, nos dois sentidos) | Carros por minuto no horário de pico | Dados no pico | Dados por dia | Os 4 pontos da EPR em um ano |
 |---|---:|---:|---:|---:|
-| Baixo: 8.000 | 10 | ~9,5 MB/min | ~7,7 GB | ~11 TB |
-| Médio: 20.000 | 25 | ~24 MB/min | ~19 GB | ~28 TB |
-| Alto: 40.000 | 49 | ~48 MB/min | ~39 GB | ~56 TB |
+| 8.000, rodovia regional | 10 | 9,5 MB/min | 7,7 GB | 11 TB |
+| 20.000, parecido com a BR-369 | 25 | 24 MB/min | 19 GB | 28 TB |
+| 40.000, trecho Maringá–Apucarana | 49 | 48 MB/min | 39 GB | 56 TB |
 
-O dado útil é uma fração mínima do que os sensores capturam. Num pórtico de um sentido com 5
-câmeras, o fluxo **bruto** é de cerca de **55 GB por minuto**. A borda (computador no pórtico) reduz isso
-para algumas dezenas de MB de evidências e algumas dezenas de KB de transações:
+O que mais me surpreendeu foi a diferença entre o que as câmeras captam e o que sobra no fim.
+As cinco câmeras de um pórtico enxergam cerca de 55 GB por minuto. Quase tudo é processado e
+jogado fora ali mesmo, no computador que fica no pórtico. O que segue para a cobrança cabe em
+algumas dezenas de KB.
 
 | | |
 |---|---|
 | ![](reports/figures/05_camadas_de_dados.png) | ![](reports/figures/04_dados_por_minuto_24h.png) |
 
-> **Sobre os números de tráfego:** a contagem de veículos por pórtico da EPR não estava acessível
-> neste ambiente, por isso os VDMs acima são **hipóteses declaradas** (rodovia regional, BR-369
-> e eixo Maringá–Apucarana). Para usar o dado oficial, baixe o CSV da ANTT em
-> `data/raw/antt/` (instruções em [`data/raw/antt/LEIA-ME.md`](data/raw/antt/LEIA-ME.md)) e
-> rode `src/volume_dados.py` de novo. Os tamanhos de arquivo são valores típicos de sistemas
-> ANPR, e todos são parâmetros editáveis no topo do script.
+Se você baixar o arquivo oficial de tráfego da ANTT e colocar em `data/raw/antt/` (o passo a
+passo está em [`data/raw/antt/LEIA-ME.md`](data/raw/antt/LEIA-ME.md)), o script troca minhas
+suposições pelos números reais. Os tamanhos de foto também podem ser ajustados no começo de
+`src/volume_dados.py`.
 
-## Como os sensores funcionam (resumo)
+## Como os sensores leem o carro
 
-| Sensor | O que faz | Tecnologia |
-|---|---|---|
-| Antena RFID | Lê a tag do para-brisa | UHF 902–928 MHz, ISO/IEC 18000-63; tag passiva, energizada pela onda da antena |
-| Câmeras ANPR | Fotografam placa dianteira e traseira | Monocromáticas, *global shutter*, flash infravermelho, exposição de microssegundos |
-| OCR | Lê os 7 caracteres da placa | Rede de detecção (YOLO) + rede de leitura (CRNN), validação pelo formato Mercosul |
-| Laser 3D | Mede perfil e eixos para definir a categoria | LiDAR sobre cada faixa |
-| Computador de borda | Junta tudo e gera o evento | Fusão por horário e faixa; tag manda, placa confere |
+A tag é um adesivo sem bateria. A antena do pórtico manda uma onda de rádio, a própria onda
+alimenta o chip, e ele responde com o seu código. Isso leva milésimos de segundo.
 
-Explicação completa, com diagrama e tabela de decisão: **[`docs/como_funciona.md`](docs/como_funciona.md)**.
+A placa é fotografada por câmeras em preto e branco com flash infravermelho. A foto é tão rápida
+que congela um carro a 120 km/h. Um programa acha a placa na imagem e outro lê as sete letras e
+números. Se a leitura sair duvidosa, uma pessoa confere a foto.
 
-## Machine learning: mais acurácia, menos custo
+O laser, pendurado sobre cada faixa, mede o tamanho do veículo e conta os eixos. É assim que o
+sistema sabe se cobra tarifa de carro ou de caminhão.
 
-Três experimentos sobre uma base sintética de **104 mil passagens** (3 dias, 4 pórticos, com
-noite, chuva, placas sujas, tags em outro veículo e duas falhas de sensor no último dia). O
-gerador conhece a placa verdadeira; na operação real esse rótulo vem da revisão humana e das
-contestações. Todos usam **validação temporal**: treinam nos dias 1 e 2 e testam no dia 3.
+Quando o carro tem tag, a cobrança vai pela tag e a foto da placa serve para conferir. Sem tag,
+a cobrança vai pela placa, e o motorista tem 30 dias para pagar.
 
-> Os números abaixo medem o método sobre dados simulados. Eles mostram a ordem de grandeza do
-> ganho, não o desempenho de um pórtico real. Os custos (R$ 0,60 por revisão, R$ 30 por cobrança
-> errada) são hipóteses editáveis.
+## Machine learning: errar menos e gastar menos
 
-### 1. Fusão das leituras com limiar por custo ([`exp1_fusao_limiar.py`](src/ml/exp1_fusao_limiar.py))
+Para treinar modelos eu precisava de muito mais passagens do que o vídeo tem. Então escrevi um
+gerador: 104 mil passagens em 3 dias e 4 pórticos, com noite, chuva, placas sujas, tag colada no
+carro errado e duas câmeras com defeito no último dia. Como o gerador sabe a placa verdadeira de
+cada carro, dá para medir exatamente quanto cada método acerta. Os modelos aprendem com os dois
+primeiros dias e são testados no terceiro, que eles nunca viram.
 
-Um gradient boosting calibrado estima a chance de a placa cobrada estar certa, usando 18 sinais:
-confiança das duas câmeras, concordância entre quadros, distância entre a placa da tag e a lida
-pelo OCR, se a placa existe no cadastro, se a categoria do cadastro bate com a do laser, chuva,
-noite etc. O limiar de aceitação automática é o que minimiza o custo total.
+Uma ressalva antes dos números: os dados são simulados. Eles mostram se a ideia funciona e o
+tamanho aproximado do ganho, não o resultado de um pórtico de verdade. Os custos (R$ 0,60 por
+foto conferida por uma pessoa e R$ 30 por cobrança errada) também são suposições minhas.
 
-| Dia de teste (34.644 passagens) | Cobrança automática | Revisão humana | Cobranças erradas | Custo por 10 mil |
+### 1. Decidir quando cobrar sozinho e quando chamar uma pessoa
+
+A regra comum é simples: se leu a tag, cobra; se a câmera tem 90% de certeza da placa, cobra;
+senão, uma pessoa confere. O problema é que esses 90% não querem dizer 90%. A câmera é
+otimista demais.
+
+Treinei um modelo que olha para 18 pistas ao mesmo tempo (a certeza das duas câmeras, se as
+fotos concordam entre si, se a placa da tag bate com a placa fotografada, se a placa existe no
+cadastro, se o tamanho medido pelo laser bate com o cadastro, se estava chovendo...) e calcula a
+chance real de acerto. Depois escolhi o ponto de corte que deixa o custo total mais baixo.
+([código](src/ml/exp1_fusao_limiar.py))
+
+| Dia de teste (34.644 passagens) | Cobrado sozinho | Conferido por uma pessoa | Cobranças erradas | Custo a cada 10 mil passagens |
 |---|---:|---:|---:|---:|
-| Regra atual (tag ou OCR ≥ 90%) | 98,8% | 1,2% | 422 | R$ 3.729 |
-| Regra com o melhor limiar de OCR | 92,3% | 7,7% | 188 | R$ 2.091 |
-| **Modelo, limiar ótimo (0,979)** | **95,7%** | **4,3%** | **17** | **R$ 405** |
+| Regra comum | 98,8% | 1,2% | 422 | R$ 3.729 |
+| Regra com o melhor corte possível | 92,3% | 7,7% | 188 | R$ 2.091 |
+| Modelo | 95,7% | 4,3% | 17 | R$ 405 |
 
-O modelo corta **96% das cobranças erradas** e **89% do custo**. Dos erros que a regra deixava
-passar, 323 eram OCR errado com confiança alta e 85 eram tag instalada em outro veículo. A
-confiança crua do OCR é superconfiante; a probabilidade do modelo é calibrada (figura 07).
+O modelo manda um pouco mais de fotos para conferência, mas as cobranças erradas caem de 422
+para 17. A pista que mais pesou foi a diferença entre a placa da tag e a placa fotografada: é ela
+que denuncia a tag colada em outro carro, um erro que a regra comum nunca percebe.
 
 | | |
 |---|---|
 | ![](reports/figures/06_custo_por_limiar.png) | ![](reports/figures/08_importancia_variaveis.png) |
 
-### 2. Correção de caracteres pelo formato Mercosul ([`exp2_correcao_mercosul.py`](src/ml/exp2_correcao_mercosul.py))
+### 2. Consertar a leitura da placa usando o formato Mercosul
 
-Só passagens sem tag (13.182 no dia de teste), que dependem 100% do OCR.
+A placa Mercosul segue sempre o mesmo desenho: três letras, um número, uma letra, dois números.
+Se a câmera leu um zero na terceira posição, só pode ser a letra O. E como a câmera tira várias
+fotos de cada carro, dá para fazer uma votação letra por letra entre elas.
+([código](src/ml/exp2_correcao_mercosul.py))
 
-| Método | Acurácia da placa | Erros por 10 mil | Redução |
+| Método (passagens sem tag) | Placas lidas certo | Erros a cada 10 mil | Redução |
 |---|---:|---:|---:|
-| A. Melhor quadro | 95,4% | 456 | – |
-| B. + regra Mercosul (dígito em posição de letra vira letra) | 96,6% | 335 | −26% |
-| **C. Votação ponderada entre quadros + regra** | **96,8%** | **321** | **−30%** |
-| D. Modelo de confusão aprendido | 96,7% | 329 | −28% |
+| Usar só a melhor foto | 95,4% | 456 | |
+| Melhor foto + regra do formato | 96,6% | 335 | 26% |
+| Votação entre as fotos + regra do formato | 96,8% | 321 | 30% |
+| Modelo que aprende quais letras a câmera confunde | 96,7% | 329 | 28% |
 
-A votação com a regra resolve os erros aleatórios. **81% dos erros que sobram estão em placas
-sujas, danificadas ou tampadas**, que são lidas erradas do mesmo jeito em todos os quadros.
-Esses casos não se resolvem com mais quadros: vão para revisão humana, e é o modelo do
-experimento 1 que os separa.
+A votação venceu, e o modelo mais sofisticado não ganhou dela. O motivo foi a parte mais
+interessante do experimento: 81% dos erros que sobraram estão em placas sujas, amassadas ou
+tampadas. Essas a câmera lê errado do mesmo jeito em todas as fotos, então votar não adianta.
+Elas precisam de uma pessoa, e quem separa esses casos é o modelo do item 1.
 
 | | |
 |---|---|
 | ![](reports/figures/09_correcao_mercosul.png) | ![](reports/figures/10_confusoes_ocr.png) |
 
-### 3. Alerta de sensor degradado ([`exp3_saude_sensores.py`](src/ml/exp3_saude_sensores.py))
+### 3. Perceber quando uma câmera começa a falhar
 
-O indicador é a fração de leituras confiáveis por faixa, a cada 10 minutos. Ele também cai com
-chuva e à noite, então um modelo aprende a taxa esperada para as condições do momento e um
-CUSUM acumula os desvios.
+Acompanhei, a cada 10 minutos, quantas placas cada câmera lê com segurança. O jeito óbvio de
+vigiar isso é tocar um alarme quando a taxa cai abaixo de 85%. Só que ela cai toda vez que chove
+ou anoitece, e o alarme vira barulho.
 
-| | Alarme ingênuo (taxa < 85%) | Modelo + CUSUM |
+Então um modelo aprende quanto cada câmera costuma ler naquela hora, com aquele tempo, e o
+alarme só toca quando a câmera fica abaixo do esperado por um período seguido (um método
+chamado CUSUM). ([código](src/ml/exp3_saude_sensores.py))
+
+| | Alarme simples (abaixo de 85%) | Alarme com o modelo |
 |---|---:|---:|
-| Janelas com alarme falso (3 dias, 8 faixas) | 172 | **0** |
-| Iluminador IR queimado (abrupto, à noite) | detecta, mas já disparava antes | **1ª janela de 10 min** |
-| Lente suja (gradual) | 20 min, misturado a alarmes falsos | **30 min** |
+| Alarmes falsos em 3 dias | 172 | 0 |
+| Flash infravermelho queimado, à noite | tocou, mas já tocava antes à toa | nos primeiros 10 minutos |
+| Lente ficando suja aos poucos | 20 minutos, no meio dos alarmes falsos | 30 minutos |
 
-O alarme ingênuo é mais rápido na lente suja só porque dispara o tempo todo. Com 172 alarmes
-falsos, ninguém confia nele.
+O alarme simples foi mais rápido na lente suja só porque toca o tempo todo. Ninguém confia num
+alarme que tocou 172 vezes sem motivo.
 
 ![](reports/figures/11_saude_sensores.png)
 
-## Como otimizar os dados
+## Como cuidar melhor desses dados
 
-Resumo das práticas, do sensor ao armazenamento. Detalhes, regras de validação e indicadores em
-**[`docs/otimizacao_dados.md`](docs/otimizacao_dados.md)**.
+O resumo está abaixo. A versão longa, com as regras de checagem e os indicadores que eu
+acompanharia num painel, está em [`docs/otimizacao_dados.md`](docs/otimizacao_dados.md).
 
-| Etapa | O que fazer | Ganho medido ou esperado |
+| Onde | O que fazer | Ganho |
 |---|---|---|
-| Captura | Processar na borda e guardar só o evento: de ~55 GB/min de imagem bruta para ~2 KB por passagem | ordens de grandeza menos tráfego de rede |
-| Leitura | Votação entre quadros + regra Mercosul | −30% de placas erradas (exp. 2) |
-| Decisão | Probabilidade calibrada + limiar por custo, em vez de "confiança ≥ 90%" | −96% de cobranças erradas, −89% de custo (exp. 1) |
-| Validação | Regras automáticas: formato, cadastro, categoria tag × laser, duplicidade, horário | pega fraude de tag e leitura impossível antes da cobrança |
-| Armazenamento | Pacote completo de fotos só quando a prova pode ser necessária; versão reduzida para tag confirmada | −59% de GB por dia |
-| Operação | Monitorar a saúde de cada câmera com esperado × observado | falha detectada em 10–30 min, sem alarmes falsos (exp. 3) |
-| Melhoria contínua | Usar a revisão humana como rótulo e revisar primeiro os casos incertos | o modelo melhora com o uso |
+| No pórtico | Processar as imagens ali mesmo e enviar só o resultado | de 55 GB por minuto para 2 KB por carro |
+| Na leitura | Votar entre as fotos e aplicar a regra do formato Mercosul | 30% menos placas erradas |
+| Na decisão | Usar a chance real de acerto e um corte baseado em custo | 96% menos cobranças erradas |
+| Antes de cobrar | Checar formato, cadastro, tag contra placa, tag contra laser, duplicidade e horário | pega fraude de tag antes da cobrança |
+| No armazenamento | Guardar todas as fotos só quando elas podem ser pedidas como prova | 59% menos espaço por dia |
+| No dia a dia | Comparar cada câmera com o que ela deveria estar lendo | defeito percebido em 10 a 30 minutos, sem alarme falso |
+| Com o tempo | Usar as conferências feitas por pessoas para treinar o modelo de novo | o modelo melhora com o uso |
 
 ![](reports/figures/12_politica_armazenamento.png)
 
-## Estrutura
+## Como o projeto está organizado
 
 ```
-data/raw/sem_parar/      cadastro aberto de pórticos, rodovias e concessionárias (CC BY 4.0)
-data/raw/antt/           (opcional) CSV oficial de volume de tráfego da ANTT
-src/analise_porticos.py  análise exploratória do cadastro -> figuras 01-03
-src/volume_dados.py      modelo de volume de dados em 4 camadas -> figuras 04-05 e tabela
-src/simulador_portico.py simulação visual do pórtico -> MP4, GIF, PNG e eventos_simulados.csv
-reports/figures/         gráficos e vídeo
-reports/tabelas/         tabelas geradas
-src/ml/gerar_eventos.py  base sintética de passagens para ML (data/sintetico/, fora do git)
-src/ml/exp1_*.py         fusão das leituras + limiar por custo + política de armazenamento
-src/ml/exp2_*.py         correção de caracteres Mercosul
-src/ml/exp3_*.py         saúde dos sensores (esperado × observado + CUSUM)
-docs/como_funciona.md    como tag, placa e laser são lidos
-docs/otimizacao_dados.md como otimizar os dados, do sensor ao armazenamento
+data/raw/sem_parar/       cadastro aberto de pórticos e concessionárias (CC BY 4.0)
+data/raw/antt/            lugar para o arquivo oficial de tráfego da ANTT (opcional)
+src/analise_porticos.py   gráficos dos pórticos (figuras 01 a 03)
+src/volume_dados.py       cálculo de dados por minuto (figuras 04 e 05)
+src/simulador_portico.py  a simulação em vídeo
+src/ml/gerar_eventos.py   o gerador de passagens para os modelos
+src/ml/exp1_*.py          decidir quando cobrar sozinho + política de armazenamento
+src/ml/exp2_*.py          correção da placa pelo formato Mercosul
+src/ml/exp3_*.py          alarme de câmera com defeito
+reports/                  gráficos, vídeo e tabelas
+docs/como_funciona.md     como tag, placa e laser são lidos
+docs/otimizacao_dados.md  como cuidar melhor dos dados
 ```
 
 ## Como rodar
@@ -182,26 +202,31 @@ python src/analise_porticos.py
 python src/volume_dados.py
 python src/simulador_portico.py --segundos 30 --seed 42
 
-# machine learning (cerca de 1 minuto no total)
+# machine learning (cerca de 1 minuto ao todo)
 python src/ml/gerar_eventos.py
 python src/ml/exp1_fusao_limiar.py
 python src/ml/exp2_correcao_mercosul.py
 python src/ml/exp3_saude_sensores.py
 ```
 
-## Limitações e próximos passos
+## O que ainda falta
 
-* Os VDMs são cenários; o próximo passo é calibrar com o CSV diário da ANTT.
-* A simulação usa uma cena gerada por código; um passo seguinte seria trocar por vídeo real de
-  rodovia com um detector treinado (YOLOv8) e um OCR de placas (ex.: dataset brasileiro RodoSol-ALPR).
-* Os experimentos de ML usam dados sintéticos. Com dados reais, o rótulo viria da revisão humana,
-  e seria preciso cuidar do viés de só conhecer a verdade dos casos que foram revisados.
-* Encadear os experimentos: usar a placa corrigida do experimento 2 como entrada do experimento 1.
-* Outras ideias: previsão de demanda por pórtico, probabilidade de inadimplência (sem tag),
-  detecção de placa clonada (mesma placa em pórticos distantes em tempo impossível).
+O movimento de veículos ainda é suposição. O próximo passo é rodar tudo com o arquivo diário da
+ANTT.
+
+A simulação é desenhada por código. Eu gostaria de trocar por vídeo real de rodovia, com um
+detector treinado (YOLOv8) e um leitor de placas brasileiras treinado no conjunto RodoSol-ALPR.
+
+Com dados reais, a resposta certa viria das conferências feitas por pessoas. Aí aparece um
+cuidado novo: só se sabe a verdade dos casos que alguém conferiu, e isso distorce o treino se
+ninguém olhar também uma amostra dos casos cobrados automaticamente.
+
+Também quero ligar os experimentos (usar a placa corrigida do item 2 como entrada do item 1) e
+testar outras ideias: prever o movimento de cada pórtico, prever quem não vai pagar no prazo e
+achar placa clonada (a mesma placa em dois pórticos distantes num intervalo de tempo impossível).
 
 ## Fontes
 
-* Cadastro de pórticos e concessionárias: [Sem-Parar/SEM-PARAR-FREE-FLOW](https://github.com/Sem-Parar/SEM-PARAR-FREE-FLOW) (CC BY 4.0), que cita a [ANTT, Free Flow](https://www.gov.br/antt/pt-br/free-flow)
-* Volume de tráfego (para calibrar): [ANTT, dados abertos](https://dados.antt.gov.br/dataset/volume-trafego-praca-pedagio)
+* Cadastro de pórticos e concessionárias: [Sem-Parar/SEM-PARAR-FREE-FLOW](https://github.com/Sem-Parar/SEM-PARAR-FREE-FLOW) (CC BY 4.0), que se baseia na [página de Free Flow da ANTT](https://www.gov.br/antt/pt-br/free-flow)
+* Tráfego oficial, para quem quiser trocar as suposições: [ANTT, dados abertos](https://dados.antt.gov.br/dataset/volume-trafego-praca-pedagio)
 * Início da cobrança na EPR Paraná: [Bem Paraná](https://www.bemparana.com.br/noticias/parana/free-flow-comeca-a-ser-cobrado-nesta-segunda-feira-no-parana-veja-em-quais-pontos/), [Banda B](https://www.bandab.com.br/noticias-parana/epr-parana-recebe-autorizacao-da-antt-para-cobrar-pedagio-eletronico-em-quatro-porticos/amp/)
